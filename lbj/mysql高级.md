@@ -237,7 +237,7 @@ SELECT * FROM tbl_name
 在表连接时，启用条件过滤可以使前缀表在选择索引时能不仅仅考虑where后面的索引条件，会考虑额外的索引外的条件。比如如果a索引能检索回1000行，而b索引能检索回10000行但能使用等值的条件过滤1%变成100行返回给后续的表使用，这时应该选择b索引（注意：1.条件只能是常量。2.条件过滤的where条件不能在索引内）。控制条件索引的系统变量："condition\_fanout\_filter"。（注意：在连接时，filtered的统计结果在最后不需要输出时，就没再统计了，所以是100%）
 #### order by优化
 index:为了避免filesort的额外开销，mysql可能会采用index来进行排序，即使index并没有完全匹配上order by后面的条件。如果使用select *去order by index，大概率不会使用索引，因为虽然可以通过索引去排序，但是排完序去源表拿完整行数据会导致多次随机I/O明显代价高于全表扫描然后排序，当然，如果只用select index倒是会使用索引（其实就是如果不用回表就会使用索引）。对于存在where key_part1 order by key_part2的情况，通过key_part1索引访问的行都是根据part2来排序的，通过这个结果也是可以节约排序操作的，对于随机访问I/O次数的问题select条件也许会筛除掉不少row减少代价，两者代价的取舍看mysql分析的统计情况了。使用group by会产生隐式排序，但请不要依赖隐式排序，请显式使用order by虽然会被优化器优化。  
-filesort: 内存中的排序，buffer的大小依赖于`sort_buffer_size`的大小，且必须容纳15个元组。每个元组的大小由`max_sort_length`系统变量配置，每行数据超过该系统变量部分则默认为相等。可以通过`show global status;`查看排序信息，如`Sort_scan`变量可以查看全表扫描排序的次数，`Sort_merge_passes`表示排序算法merge passes(指合并)出现次数。
+filesort: 内存中的排序，buffer的大小依赖于`sort_buffer_size`的大小，且必须容纳15个元组。每个元组的大小由`max_sort_length`系统变量配置，每行数据超过该系统变量部分则默认为相等。可以通过`show global status;`查看排序信息，如`Sort_scan`变量可以查看全表扫描排序的次数，`Sort_merge_passes`表示排序算法merge passes(指合并)出现次数。关于外部排序算法的选用，通过`max_length_for_sort_data`设置的行数值来进行调控，如果结果超过该值则使用算法1，未超过则使用算法3。(如果将该值设置的过高，则会导致磁盘I/O过高，这是由于导致临时文件过大，排序操作导致过多I/O。)
 
 msyql排序模式：
 
@@ -248,6 +248,14 @@ msyql排序模式：
 外部排序：
 1.mysql的外部排序采用的是多路归并(7路)的方式进行的，通过多次归并减少文件数量最后得到一个。2.mysql的临时文件只有一个，通过位偏移量来区分多个。3.对于limit则是采用优先队列的方式进行淘汰的，如果是limit m,n则一般是存m+n最后丢弃m的方式来实现。如果是存在外部排序的话，则还是采用原外部排序的方法，然后取相应位置的值即可。
 
+临时文件：
+对于外部排序所需要的临时文件，可以查看`tmpdir`系统变量来获取临时文件位置。对于Unix系统使用:对路径进行分割，建议使用多个物理磁盘而不是同一磁盘的多个分区进行分割。
+#### group by优化
+group by使用三种方式来实现，其中前两种会利用索引信息。
+
+1. loose index scan实现：仅通过索引信息即可扫描出结果，且不必详细比对所有索引，仅判断部分索引值便可得出结果。extra会出现using index for group-by
+2. tigh index scan实现：仅凭索引扫描出结果分组，但缺少比对信息，需要查询出相应数据与where比对后过滤输出。
+3. 建立临时表：全表扫描，建立临时表分组。extra会出现Using temporary。
 ### 子查询优化
 对于子查询mysql根据不同情况采用不同策略进行优化。  
 对于IN的情况：Semijoin，Materialization，EXISTS strategy
@@ -266,7 +274,10 @@ select * from supplier_cdn_vod_202106 as s1 join cdn_vod_202106 as s2  on s1.cdn
 
 #### 索引拓展
 innoDB通过将每个二级索引附加主键列来拓展二级索引，即将二级索引和主键一起组合成联合索引，可以通过`SET optimizer_switch = 'use_index_extensions=off';`开启。可以通过explain查看是否采用索引拓展的区别，主要可以通过rows查看索引查到的行数对比，或者ref能看明显用了2个const，或者key_len长度变化，或者没有使用using where表示没有在服务器用where条件筛选。([using where存疑,啥情况下会出现using where?吗的，使用主键查本地是正常的using index，服务器却会using where using index，不晓得为啥](https://dev.mysql.com/doc/refman/5.7/en/explain-output.html#explain_extra))
-**Loose Index Scan access**
+
+# innodb引擎
+## ACID
+###一致性
 ## mysql物理结构
 * 聚簇索引:innoDB存储引擎存储的表都是有聚簇索引的，一般为主键，如果没有主键则寻找合适的非空unique索引，如果还是没有则生成包含行id值的合成列作为隐藏聚簇索引，长度为6字节。  
 * 二级索引:聚簇索引外的称之为二级索引，当聚簇索引建立后，所有二级索引的叶子结点都为聚簇索引的key。所以如果索引列(主键也一样)很长，索引就会占用更多的空间，同时意味着更多的I/O，对查询也是不利的。  
@@ -290,3 +301,5 @@ innodb_data_file_path=/myibdata/ibdata1:50M:autoextend
 ## 死锁
 ### 处理死锁
 死锁状态确认:`show engine innodb status`;
+
+## [optimizer_trace](https://www.imooc.com/article/308721)

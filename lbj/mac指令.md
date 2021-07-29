@@ -114,5 +114,22 @@ mv [options] src dest
 -u				//目标文件不存在或者比源文件旧时才执行移动
 ```
 
-## 网络
-查看端口使用:`lsof -i tcp:[port]`
+## lsof(list openfile//使用man查看详细)
+-i				//显示网络连接
+```
+tcp:[port]	//显示tcp的port端口，可拆开使用
+@host			//显示指定主机的连接
+```
+
+-u				//查看用户正在执行的
+```
+-u -t [username]			//查看该用户相关的pid，可以使用kill -9 `[command]`杀死
+```
+
+-c				//查看指定命令使用的文件和网络连接
+-p				//查看指定进程使用的文件和网络连接
+-t				//只返回pid
+
+[filename]		//直接输入目录，显示与指定目录的交互。
++L[n]			//显示所有链接数小于n的文件，如果是1的话则是已删除但open的文件
+-L				//显示no linked count？
