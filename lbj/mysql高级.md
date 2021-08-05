@@ -312,3 +312,22 @@ innodb_data_file_path=/myibdata/ibdata1:50M:autoextend
 死锁状态确认:`show engine innodb status`;
 
 ## [optimizer_trace](https://www.imooc.com/article/308721)
+## 分库分表
+### 使用符号连接
+使用datadir符号链接，将表空间分区分散到多个磁盘增加效率，可使用show variables like 'datadir'查看。
+### 分区
+注意事项：1.做分区时要么不定义主键，要么把分区字段加入到主键中。2.分区字段不为null。
+
+### 难点
+* 分布式事务的问题
+* 跨节点Join的问题
+* 跨节点合并排序分页的问题
+* 多数据源管理问题
+
+CREATE TABLE ti (id INT, amount DECIMAL(7,2), tr_date DATE)
+    ENGINE=INNODB
+    PARTITION BY HASH( MONTH(tr_date) )
+    PARTITIONS 6;
+# mycat
+[相关文档1](https://www.yuque.com/books/share/6606b3b6-3365-4187-94c4-e51116894695/fb2285b811138a442eb850f0127d7ea3)
+[相关文档2](http://www.mycat.org.cn/document/mycat-definitive-guide.pdf)
