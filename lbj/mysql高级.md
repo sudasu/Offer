@@ -24,8 +24,8 @@ DDL log (metadata log)	//Metadata operations performed by DDL statements
 一般情况下query log是被禁止的。可以查看general_log系统变量，如果没有值或者1则表示query log是启用了的。如果为0则表示未启用，可以`set @@global.general_log = 1`启用。对于general_log_file=file_name，如果没有定义file_name仍然会拼接成host_name.log在data目录下。
 ### binary log
 binlog主要包含描述数据库数据更改的statement,如表创建修改，表数据创建修改等操作。binlog在包含每个语句的同时还包含语句花费多少时间去更新的信息。binlog主要用于两个目的，一个是为了执行复制，源服务器发送包含在binlog的变化事件给副本以执行与源相同的操作，一个是为了进行恢复操作，当某一个时间点的数据被备份了，可以使用期间的binary log使得期间发生的命令继续再执行一次，以达到更新。当然binlog不会记录show,select等不会修改数据的语句。  
-想要查看binlog相关参数可以使用`show variables like "%bin%"`。binlog的name由bin_basename+.index组成，如果自己在basename里包含.extension，则extension会被忽略。
-新的binlog的创建根据以下三种情况创建：1.服务器启动或重启。2.服务器flush了log。3.log文件的大小到达了max_binlog_size(binary log file有可能会大于max_binlog_size，因为有可能创建了一个比较大的事务，而事务内数据的写入是不会分开在其他文件中)。
+想要查看binlog相关参数可以使用`show variables like "%bin%"`。binlog的name由bin\_basename+.index组成，如果自己在basename里包含.extension，则extension会被忽略。
+新的binlog的创建根据以下三种情况创建：1.服务器启动或重启。2.服务器flush了log。3.log文件的大小到达了max\_binlog\_size(binary log file有可能会大于max\_binlog\_size，因为有可能创建了一个比较大的事务，而事务内数据的写入是不会分开在其他文件中)。
 二进制日志是一组文件，日志是一组二进制日志文件和一个索引文件组成。清空所有binlog可以使用reset master语句，但最好不要随意删除源上的旧二进制log文件。手动删除文件，最好采用purge binary logs来删除，它可以安全的更新索引文件。
 purge binary logs例子：
 
@@ -48,10 +48,10 @@ binlog的写入会在任何锁被释放前或者commit之前，如对于非提�
 
 对于binary log，row based logging并发的inser会被转换成为正式的插入如create ... select和inset ... select，这是为了还原备份操作时能确实重建表，而如果是statement-based logging就只会存储原始语句。
 #### 异步和同步刷盘binlog
-默认情况下sync_binlog（同步写入）是开启的，这样能保证在事务commit之前能写入disk。但是这样会导致如果日志落盘和commit之间宕机，使得日志与事实不一的情况，mysql默认采用xa事务解决此问题。在mysql崩溃重启后。在回滚事务之前mysql扫描最近的binary log文件检查最近事务的xid值以计算最近有效的binary log file，恢复正确的日志。
+默认情况下sync\_binlog（同步写入）是开启的，这样能保证在事务commit之前能写入disk。但是这样会导致如果日志落盘和commit之间宕机，使得日志与事实不一的情况，mysql默认采用与redolog的xa事务解决此问题。在mysql崩溃重启后。在回滚事务之前mysql扫描最近的binary log文件检查最近事务的xid值以计算最近有效的binary log file(删除xid后的无效数据)，恢复正确的binlog日志。在某次事务中，由于两阶段提交的原理如果binlog能恢复成功，则就可以使用redolog恢复之前事务的执行，而binlog不能恢复成功，则本次事务无法恢复执行失败。(<s>我猜测外部程序员观察事务的执行情况应该是在binlog完成commit状态修改后，就会返回commit状态当然也有可能是真的完全执行完了再发送信息，发送信息过程也会出现丢失的情况，但对数据库而言就不关心这方面的具体内容了。</s>上述思考并不重要，mysql都宕机了还想api确定执行状态，直接查看mysql日志信息即可确认。)
 #### binlog的格式
 * --binlog-format=STATEMENT：基于sql语句的binlog格式
-* --binlog-format=ROW：基于单个表的行是如何受影响的
+* --binlog-format=ROW：基于单个表的行是如何受影响的(注意，binlog本质上还是逻辑日志，row格式也是逻辑上的描述。)
 * --binlog-format=MIXED：log的mode默认为statement，但是会基于一些情况转化成row
 
 源服务器和副本使用不同的存储引擎存储数据是非常容易出现，对于这种情况基于statement的binlog容易出现非确定性的情况，mysql这时会将其标注为不可信赖且发布一个warning"Statement may not be safe to log in statement format."为了避免这种情况最好使用row-based的log格式。
@@ -73,8 +73,16 @@ options说明：
 -s				//排序，t:查询时间，l:上锁时间，r:影响的行数,c:数量
 -v				//verbose模式，展示更多的详细信息。
 ```
+
+### redolog和binlog的区别
+1. binlog产生于存储引擎的上层，不管什么存储引擎都会产生binlog，而redolog是在innodb层产生的。
+2. binlog记录逻辑性语句，即便是基于行格式也是逻辑上的记录，而redo log则是记录物理上的数据页，可以直接用来替换内存，磁盘中的mysql数据页。
+3. redolog是循环写，空间固定(只用记录最近的情况就行了)，而binlog是追加写。
+4. 事务提交时，先写redolog写完后进入prepare状态，再写binlog写完后(末尾写入XID event表示写完)再进入commit状态(即在redo log里面写一个commit记录)。(两阶段提交是否会出现XID event写入但redo log commit写入失败的情况呢？应该是理论上仅存在微小可能，因为两者之间的执行间隔应该非常的短，可以忽略不计。)
+
 ## 配置管理
 ### 不同环境的启动配置
+
 ```
 //可以使用1-2GB内存和拥有许多表，希望在中等数量的客户端上获得最大性能
 key_buffer_size=384M
@@ -96,6 +104,7 @@ read_buffer_size=8k
 net_buffer_length=1k
 //如果正在执行对比内存大很的表的group by或者order by操作，需要增大read_rnd_buffer_size加快排序操作后的行读取速度。
 ```
+
 ### [常用状态变量](https://dev.mysql.com/doc/refman/5.7/en/server-status-variables.html)（还有重要的系统变量等，有时间再细看）
 使用`show global status`查看必要的状态变量;
 
