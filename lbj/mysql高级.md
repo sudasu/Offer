@@ -1,9 +1,16 @@
 # [mysql](https://dev.mysql.com/doc/refman/5.7/en/innodb-deadlocks-handling.html)
 ## 基础
 mysql的模式匹配:`like`语句支持%以匹配一个或多个,`_`匹配一个，也可以通过`regexp`来使用正则表达式。为使得`regexp`区分大小写可以使用`binary`转化成二进制字符串，如`regexp binary '^b'`。(^:以...开头，$:以...结尾,.:任意一个字符,{n}:前一个规则重复5次。)  
-mysqld_safe:在UNIX上启动mysqld服务器的推荐方法，mysqld\_safe通过读取options file的[mysqld_safe]或[safe_mysqld]部分启动了些安全功能，例如发生错误时重启服务器，将错误信息记录到错误日志。
+mysqld\_safe:在UNIX上启动mysqld服务器的推荐方法，mysqld\_safe通过读取options file的[mysqld\_safe]或[safe\_mysqld]部分启动了些安全功能，例如发生错误时重启服务器，将错误信息记录到错误日志。
 
 取消查询:需要先输入相应的结束符，再输入\c。
+## 数据类型
+###日期时间
+```
+  ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  dt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+ ```
+ 上述两类数据类型可以在update时自动更新相应值，CURRENT_TIMESTAMP具有同意词(NOW(),LOCALTIME,LOCALTIME())。
 ## [mysql数据目录](https://dev.mysql.com/doc/refman/5.7/en/data-directory.html)
 ### [系统数据库](https://dev.mysql.com/doc/refman/5.7/en/system-schema.html)
 mysql database存储着系统中重要的信息，这些存储信息的表按照授权系统，日志系统等类型进行分组。
@@ -329,6 +336,9 @@ buffer chunks是最底层的物理块，由两部分组成:1.控制体和与其�
 2. LRU List:LRU List按照最少使用算法排序，由两部分组成默认前5/8为young list存储经常被使用的热点page，后3/8为old list。新读入的page默认加到old list头，只有满足一定条件后才被移到young list上，主要是为了预读数据页和防止全表扫描污染buffer pool。
 3. FLU List:该链表上都是脏页节点，FLU List上的页面一定存在在LRU List上。由于数据页可能会在不同时刻被修改多次，数据页上记录了最老的一次修改的lsn，FLU List的节点按照oldest_modification
 排序，链表的尾端是最早被修改的数据页。(FLU List通过flush_list_mutex保证并发)
+
+### Buffer Pool预热
+MYSQL在重启时缓冲池没有什么数据，需要业务对数据库进行数据操作才能慢慢填充。所以在初期MySQL的性能不会特别好，特别Buffer Pool越大预热过程越长。为了缩短预热过程，可以把之前Buffer Pool中的页面数据存储到磁盘，等MySQL启动时直接加载磁盘数据即可。其中dump过程按space_id,page_no组成64位数字写到外部文件中，
 ## 死锁
 ### 处理死锁
 死锁状态确认:`show engine innodb status`;
