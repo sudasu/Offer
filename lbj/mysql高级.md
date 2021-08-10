@@ -58,6 +58,8 @@ binlog的写入会在任何锁被释放前或者commit之前，如对于非提�
 对于运行时更改binlog的格式，如果采用session级别则可能有这么几种情况。1.session使用where更新很多很多匹配行，这样基于语句就比基于row要更加高效。2.花费了非常多的时间或者执行了很多的语句，但最终只改变了很少一部分行，这是采用row-based更加有效。
 对于副本服务器，如果源服务器更改了log format，自己本身不会做相应转化，会执行报错处理。(这是不是说明，如果源服务器会更改的话，副本还是就采用mixed模式为好。)注意如果innodb采用提交读和读未提交，则只能使用row-based模式，哪怕在运行时更改了log模式会导致innodb不再具有插入的功能。
 对于DML语言和DDL语言，DML会遵循binlog的格式而DDL则会保持statement的格式，如是混合型语言如`CREATE TABLE ... SELECT`，则DML部分和DDL部分分开对待。
+
+#### binlog的组提交
 ### slow query log
 慢查询日志记录超过long_query_time时间和min_examined_row_limit的行数的sql语句。通过slow_query_log开启关闭慢查询日志，通过slow_query_log_file制定文件名和路径，如果不指定则默认data目录进行{host_name}-slow.log拼接。为了包含DDL语句的慢查询，需要开启log_slow_admin_statements变量。进一步的，如果想包含不使用索引的查询，启动log_queries_not_using_indexes系统变量。
 #### mysqldumpslow工具
@@ -76,7 +78,7 @@ options说明：
 
 ### redolog和binlog的区别
 1. binlog产生于存储引擎的上层，不管什么存储引擎都会产生binlog，而redolog是在innodb层产生的。
-2. binlog记录逻辑性语句，即便是基于行格式也是逻辑上的记录，而redo log则是记录物理上的数据页，可以直接用来替换内存，磁盘中的mysql数据页。
+2. binlog记录逻辑性语句，即便是基于行格式也是逻辑上的记录，如(表，行，修改前值，修改后值)，而redo log则是记录物理页上的修改，类似(pageId,offset,len,修改前值，修改后值)。
 3. redolog是循环写，空间固定(只用记录最近的情况就行了)，而binlog是追加写。
 4. 事务提交时，先写redolog写完后进入prepare状态，再写binlog写完后(末尾写入XID event表示写完)再进入commit状态(即在redo log里面写一个commit记录)。(两阶段提交是否会出现XID event写入但redo log commit写入失败的情况呢？应该是理论上仅存在微小可能，因为两者之间的执行间隔应该非常的短，可以忽略不计。)
 
@@ -288,7 +290,7 @@ innoDB通过将每个二级索引附加主键列来拓展二级索引，即将�
 ## ACID
 ### 一致性
 一致性体现在mysql崩溃时对数据的安全的保护，主要包含innodb双写buffer和崩溃恢复。
-双写buffer：innodb的pagesize一般为16kb，而文件系统对数据页的写入并不是原子操作，需要将多个数据页分别写入磁盘。而如果系统在这个时候崩溃，就会导致数据的不一致问题。其中系统崩溃分为两种情况，一种是物理页完整即不存在数据页只写了一半的问题，这只需要通过redo log进行崩溃恢复即可。而第二种情况是有些数据页有一部分写入成功导致partial page write问题，其中redo log记录的是对页的物理修改，如存在某个偏移的值替换另一个偏移的修改的值的情况，这些操作一般不具备幂等性，所以无法单纯的对该损坏数据页进行redo操作。此时mysql的双写策略就派上了用场。mysql在写入数据时先将脏页的修改写入redo log文件，再将数据拷贝入double buffer，double buffer再先写入共享表空间(ibdata文件，但需要注意的是8.0.20之前位于系统表空间，之后则有专门的双写文件，可通过innodb\_doublewrite\_dir，innodb\_doublewrite\_files等参数调控)，再将数据写入真实的数据文件。此时虽然双写磁盘会造成额外的开销，但是开销基本上都会远远小于两倍，因为共享表空间的数据是连续存放顺序写入的，而真实的数据文件则是随机I/O写入的。  
+双写buffer：innodb的pagesize一般为16kb，而文件系统对数据页的写入并不是原子操作，需要将多个数据页分别写入磁盘。而如果系统在这个时候崩溃，就会导致数据的不一致问题。其中系统崩溃分为两种情况，一种是物理页完整即不存在数据页只写了一半的问题，这只需要通过redo log进行崩溃恢复即可。而第二种情况是有些数据页有一部分写入成功导致partial page write问题，其中redo log记录的是对页的物理修改，无法对已损坏了的数据页进行redo操作(我们来猜测一下mysql redo的恢复过程，如果已经commit了,还没写入双写文件，则数据完全是干净的，直接按照redo重写即可。如果写入了双写文件，但目标文件写到一半，且出现页损坏。那么按照redolog重新执行写入的流程应该是，如果完成写的页直接跳过，完全没写的页直接写，而写了一半的页则无法直接处理，如遇见删除第十行数据的操作，该操作不具备幂等性，且不知道是否已经执行过了这就需要双写文件替换该被损坏的页。)。此时mysql的双写策略就派上了用场。mysql在写入数据时先将脏页的修改写入redo log文件，再将数据拷贝入double buffer，double buffer再先写入共享表空间(ibdata文件，但需要注意的是8.0.20之前位于系统表空间，之后则有专门的双写文件，可通过innodb\_doublewrite\_dir，innodb\_doublewrite\_files等参数调控)，再将数据写入真实的数据文件。此时虽然双写磁盘会造成额外的开销，但是开销基本上都会远远小于两倍，因为共享表空间的数据是连续存放顺序写入的，而真实的数据文件则是随机I/O写入的。  
 所以mysql对此类情况的处理是在恢复时先检查page的checksum,checksum就是检查page的最后事务号，已被损坏的页是无法通过校验的。如果未通过校验，mysql先找到共享表空间的该页副本来进行还原，再通过redo log来重做完整的页数据。
 
 完整恢复流程：1.表空间发现。2.应用redo log。3.回滚未完成事务。4.change buffer合并。5.清除
@@ -315,7 +317,18 @@ InnoDB创建或重建索引时执行批量加载而不是一次一条的插入�
 innodb_data_home_dir =  
 innodb_data_file_path=/myibdata/ibdata1:50M:autoextend
 
+## Buffer Pool
+### instance
+buffer pool的实例大小为innodb\_buffer\_pool\_size/innodb\_buffer\_pool\_instances两个系统变量的计算，每个instance都有自己的锁，信号量，物理块(buffer chunks)以及逻辑链表。每个instance之间是相互独立的，可以并发读写，在数据库启动时被分配，在数据库关闭内存时释放。(当innodb\_buffer\_pool\_size小于1GB时，instances被重置为1，主要防止太多小的instance影响性能。)
+### buffer chunks
+buffer chunks是最底层的物理块，由两部分组成:1.控制体和与其对应的数据页。控制体中包含指针指向数据页，数据页包含控制信息如行锁，自适应hash和用户存储的信息。
+### 逻辑链表
+链表节点就是数据页的控制体，各种类型链表的节点拥有相同属性，方便管理。
 
+1. Free List:上面的节点均为未被使用的节点，Innodb需要保证Free List有足够的节点提供给用户线程使用，否则从FLU List或LRU List淘汰一定的节点。
+2. LRU List:LRU List按照最少使用算法排序，由两部分组成默认前5/8为young list存储经常被使用的热点page，后3/8为old list。新读入的page默认加到old list头，只有满足一定条件后才被移到young list上，主要是为了预读数据页和防止全表扫描污染buffer pool。
+3. FLU List:该链表上都是脏页节点，FLU List上的页面一定存在在LRU List上。由于数据页可能会在不同时刻被修改多次，数据页上记录了最老的一次修改的lsn，FLU List的节点按照oldest_modification
+排序，链表的尾端是最早被修改的数据页。(FLU List通过flush_list_mutex保证并发)
 ## 死锁
 ### 处理死锁
 死锁状态确认:`show engine innodb status`;
