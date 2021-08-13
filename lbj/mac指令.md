@@ -1,13 +1,14 @@
 # mac指令
 ## 环境变量配置
 ### /etc/profile全局环境变量失效
-macOS Cataalina(10.15)后默认终端从bash变成了zsh，可输入<code>echo $SHELL</code>查看。执行完 source /etc/profile指令后新建终端环境变量失效的解决方案：
+macOS Cataalina(10.15)后默认终端从bash变成了zsh，可输入`cho $SHELL`查看。执行完`source /etc/profile`指令后新建终端环境变量失效的解决方案：
 
 *  执行<code>vim ~/.zshrc</code>指令
 *  在.zshrc文件最后添加:<code>source /etc/profile</code>
 *  最后执行<code>source ~/.zshrc</code>
 
 ### 配置环境变量
+
 * 输入<code>vim ~/.zshrc</code>进入.zshrc文件
 * 添加如export GOPATH = "/Users/lbj/go"(保留多项如export PATH = $PATH:$GOPATH:..)
 * 最后<code>source ~/.zshrc</code>立即生效
@@ -20,12 +21,14 @@ macOS Cataalina(10.15)后默认终端从bash变成了zsh，可输入<code>echo $
 3. 由于文件只读，需要q!或wq!强制退出
 
 ## shell alias别名设置
-<---some more ls aliases
+some more ls aliases
+
 ```
 alias ll='ls -alF'
 alias la='ls -A'
 alias l='ls -CF'
 ```
+
 ## 修改hosts文件
 <code>vi /etc/hosts</code>
 ## 文件权限
@@ -59,6 +62,7 @@ drwxr-xr-x    5 root    wheel      160  4 24 00:48 support-files
 第六列表示文档最后修改时间
 第六列表示文档名称
 ```
+
 ## tail
 tail [options] [file]
 
@@ -69,6 +73,7 @@ options说明：
 --pid=PID		//与-f合用，表示在进程死掉后结束
 s=S				//与-f合用，表示在每次读取后休眠S秒
 ```
+
 ## df
 df [options] [file]			//查看文件系统磁盘使用情况统计
 
@@ -82,6 +87,7 @@ df [options] [file]			//查看文件系统磁盘使用情况统计
 
 ## grep
 grep [match] [options]		//搜索所在行
+
 
 ```
 -A n					//包含目标行及后n行
@@ -102,7 +108,7 @@ grep正则支持：世界上的正则表达式种类繁多且复杂，面对这�
 
 而在扩展正则表达式（ERE）中，则在BRE的基础上增加了“（”、“）”、“{”、“}”、“？”和“+”、“|”等元字符。
 
-最后要特别说明的一点，只有在用反斜杠进行转义的情况下，字符“（”、“）”、“{”和“}”才会在扩展正则表达式（ERE）中被当作元字符处理，而在基本正则表达式（ERE）中，任何元字符前面加上反斜杠反而会使其被当作普通字符来处理。这样的设计，有些奇葩，同学们一定要记清楚哦。
+最后要特别说明的一点，只有在用反斜杠\\进行转义的情况下，字符“（”、“）”、“{”和“}”才会在扩展正则表达式（ERE）中被当作元字符处理，而在基本正则表达式（ERE）中，任何元字符前面加上反斜杠反而会使其被当作普通字符来处理。这样的设计，有些奇葩，同学们一定要记清楚哦。
 ## mv
 mv [options] src dest
 
@@ -114,5 +120,55 @@ mv [options] src dest
 -u				//目标文件不存在或者比源文件旧时才执行移动
 ```
 
-## 网络
-查看端口使用:`lsof -i tcp:[port]`
+## wc
+```
+-c							//输出统计byte
+-m							//统计字符，如果不支持多byte字符，则等同于c
+-l							//输出统计行
+-w							//输出单词，用空格分隔
+```
+
+## lsof(list openfile//使用man查看详细)
+
+```
+-itcp@host:[port]		//-i显示网络连接相关内容，该指令显示tcp的指定主机的port端口的连接，可拆开使用。
+
+-s[p:s]					//如果单独使用则是强制显示文件大小，但如果和-i配合使用的话，可以用来筛选连接状态。
+
+-u -t [username]			//-u 查看用户正在执行的，该指令可以查看该用户相关的pid，可以使用kill -9 `[command]`杀死
+
+-c							//查看指定命令使用的文件和网络连接
+-p							//查看指定进程使用的文件和网络连接
+-t							//只返回pid
+
+[filename]				//直接输入目录，显示与指定目录的交互。
++L[n]						//显示所有链接数小于n的文件，如果是1的话则是已删除但open的文件
+-L							//显示no linked count？
+```
+
+## netstat(mac上并不好使，而且很卡)
+
+```
+-a							//打印出当前所有连接
+-v							//打印出冗长信息，如pid之类的列信息
+-p							//指定协议 如tcp
+-t | -u						//分别对应tcp和udp。注意：mac上并不能这样用
+-s							//打印出协议相关连接信息，处于安全因素考虑，tcp的相关信息需要root权限，如sudo netstat  -sp tcp
+-n							//mac上默认是用名字来显示端口，host的，所以为了方便筛选使用该options转换为数字(马德，终于知道为什么这么卡了，每次都要dns解析host，端口协议之类的数字，使用-n就不卡了)
+```
+
+关于netstat半连接查询：可以查询SYN_RCVD状态的socket数量。全连接查询：或许可以使用establelished状态的连接数量。统计数量使用wc -l语句。
+## ps
+
+```
+-A | e						//展示所有用户包含without controlling terminals的信息
+-f							//打印uid,pid,parent pid,recent CPU usage,process start time,controling tty,elapsed CPU usage和associated command。如果其中使用了-u，则会将uid转换为用户名。
+-a							//展示所有用户的进程信息，但是会跳过without controlling terminal(是指守护进程吗)的进程
+-u [usernames] |-U [userIds]	//根据用户名查找，注意：如果使用多个匹配参数，会取交集 | 感觉linux和mac可能会不一样
+-x｜X						//对已经匹配上的进程，-x会包含without controlling terminal的进程，-X会排除掉，如果同时出现按lastest的来。
+-c							//将command列仅输出可以执行文件的名字，而不是整个命令行
+-j							//打印user,pid,ppid,pgid,sess,jobc,state,tt,time和command信息
+-l							//打印uid,pid,ppid,flags,cpu,pri,nice,vsz=SZ,rss,wchan,state=S,paddr=ADDR,tty,time和command=CMD的信息
+```
+
+## curl

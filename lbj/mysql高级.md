@@ -1,9 +1,16 @@
 # [mysql](https://dev.mysql.com/doc/refman/5.7/en/innodb-deadlocks-handling.html)
 ## 基础
 mysql的模式匹配:`like`语句支持%以匹配一个或多个,`_`匹配一个，也可以通过`regexp`来使用正则表达式。为使得`regexp`区分大小写可以使用`binary`转化成二进制字符串，如`regexp binary '^b'`。(^:以...开头，$:以...结尾,.:任意一个字符,{n}:前一个规则重复5次。)  
-mysqld_safe:在UNIX上启动mysqld服务器的推荐方法，mysqld\_safe通过读取options file的[mysqld_safe]或[safe_mysqld]部分启动了些安全功能，例如发生错误时重启服务器，将错误信息记录到错误日志。
+mysqld\_safe:在UNIX上启动mysqld服务器的推荐方法，mysqld\_safe通过读取options file的[mysqld\_safe]或[safe\_mysqld]部分启动了些安全功能，例如发生错误时重启服务器，将错误信息记录到错误日志。
 
 取消查询:需要先输入相应的结束符，再输入\c。
+## 数据类型
+###日期时间
+```
+  ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  dt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+ ```
+ 上述两类数据类型可以在update时自动更新相应值，CURRENT_TIMESTAMP具有同意词(NOW(),LOCALTIME,LOCALTIME())。
 ## [mysql数据目录](https://dev.mysql.com/doc/refman/5.7/en/data-directory.html)
 ### [系统数据库](https://dev.mysql.com/doc/refman/5.7/en/system-schema.html)
 mysql database存储着系统中重要的信息，这些存储信息的表按照授权系统，日志系统等类型进行分组。
@@ -24,8 +31,8 @@ DDL log (metadata log)	//Metadata operations performed by DDL statements
 一般情况下query log是被禁止的。可以查看general_log系统变量，如果没有值或者1则表示query log是启用了的。如果为0则表示未启用，可以`set @@global.general_log = 1`启用。对于general_log_file=file_name，如果没有定义file_name仍然会拼接成host_name.log在data目录下。
 ### binary log
 binlog主要包含描述数据库数据更改的statement,如表创建修改，表数据创建修改等操作。binlog在包含每个语句的同时还包含语句花费多少时间去更新的信息。binlog主要用于两个目的，一个是为了执行复制，源服务器发送包含在binlog的变化事件给副本以执行与源相同的操作，一个是为了进行恢复操作，当某一个时间点的数据被备份了，可以使用期间的binary log使得期间发生的命令继续再执行一次，以达到更新。当然binlog不会记录show,select等不会修改数据的语句。  
-想要查看binlog相关参数可以使用`show variables like "%bin%"`。binlog的name由bin_basename+.index组成，如果自己在basename里包含.extension，则extension会被忽略。
-新的binlog的创建根据以下三种情况创建：1.服务器启动或重启。2.服务器flush了log。3.log文件的大小到达了max_binlog_size(binary log file有可能会大于max_binlog_size，因为有可能创建了一个比较大的事务，而事务内数据的写入是不会分开在其他文件中)。
+想要查看binlog相关参数可以使用`show variables like "%bin%"`。binlog的name由bin\_basename+.index组成，如果自己在basename里包含.extension，则extension会被忽略。
+新的binlog的创建根据以下三种情况创建：1.服务器启动或重启。2.服务器flush了log。3.log文件的大小到达了max\_binlog\_size(binary log file有可能会大于max\_binlog\_size，因为有可能创建了一个比较大的事务，而事务内数据的写入是不会分开在其他文件中)。
 二进制日志是一组文件，日志是一组二进制日志文件和一个索引文件组成。清空所有binlog可以使用reset master语句，但最好不要随意删除源上的旧二进制log文件。手动删除文件，最好采用purge binary logs来删除，它可以安全的更新索引文件。
 purge binary logs例子：
 
@@ -44,20 +51,22 @@ purge binary logs before '2019-04-02 22:46:26';	      //根据日期来进行清
 
 也可以设置`expire_logs_days`系统变量，使日志自动删除(感觉这样还是不好，应该是没有备份的。擦，一向什么都不配置的公司服务器居然配了10天，可能是避免太占空间了？也没见主从备啊，感觉主从备确实可以主定时删，从保留log即可)。还有一点需要注意的是如果你手动的使用rm语句删除了binary数据，再使用purge binary logs的语句将会报failed，这时需要edit ./[basename].index文件确保上面的文件确实存在。
 
-binlog的写入会在任何锁被释放前或者commit之前，如对于非提交事务mysql在接受到commit指令之前会先缓存指令，然后在commit执行之前将记录写入binlog，而非事务表则会在执行完成后立即写入。当一个线程开始处理事务，会分配一个buffer(大小取决于binlog_cache_size)去缓存语句，如果语句的大小超过了buffer则会开一个临时文件去存储事务，临时文件在线程结束时会被删除。
+binlog的写入会在任何锁被释放前或者commit之前，如对于非提交事务mysql在接受到commit指令之前会先缓存指令，然后在commit执行之前将记录写入binlog，而非事务表则会在执行完成后立即写入。当一个线程开始处理事务，会分配一个buffer(大小取决于binlog\_cache\_size)去缓存语句，如果语句的大小超过了buffer则会开一个临时文件去存储事务，临时文件在线程结束时会被删除。
 
 对于binary log，row based logging并发的inser会被转换成为正式的插入如create ... select和inset ... select，这是为了还原备份操作时能确实重建表，而如果是statement-based logging就只会存储原始语句。
 #### 异步和同步刷盘binlog
-默认情况下sync_binlog（同步写入）是开启的，这样能保证在事务commit之前能写入disk。但是这样会导致如果日志落盘和commit之间宕机，使得日志与事实不一的情况，mysql默认采用xa事务解决此问题。在mysql崩溃重启后。在回滚事务之前mysql扫描最近的binary log文件检查最近事务的xid值以计算最近有效的binary log file，恢复正确的日志。
+默认情况下sync\_binlog（同步写入）是开启的，这样能保证在事务commit之前能写入disk。但是这样会导致如果日志落盘和commit之间宕机，使得日志与事实不一的情况，mysql默认采用与redolog的xa事务解决此问题。在mysql崩溃重启后。在回滚事务之前mysql扫描最近的binary log文件检查最近事务的xid值以计算最近有效的binary log file(删除xid后的无效数据)，恢复正确的binlog日志。在某次事务中，由于两阶段提交的原理如果binlog能恢复成功，则就可以使用redolog恢复之前事务的执行，而binlog不能恢复成功，则本次事务无法恢复执行失败。(<s>我猜测外部程序员观察事务的执行情况应该是在binlog完成commit状态修改后，就会返回commit状态当然也有可能是真的完全执行完了再发送信息，发送信息过程也会出现丢失的情况，但对数据库而言就不关心这方面的具体内容了。</s>上述思考并不重要，mysql都宕机了还想api确定执行状态，直接查看mysql日志信息即可确认。)
 #### binlog的格式
 * --binlog-format=STATEMENT：基于sql语句的binlog格式
-* --binlog-format=ROW：基于单个表的行是如何受影响的
+* --binlog-format=ROW：基于单个表的行是如何受影响的(注意，binlog本质上还是逻辑日志，row格式也是逻辑上的描述。)
 * --binlog-format=MIXED：log的mode默认为statement，但是会基于一些情况转化成row
 
 源服务器和副本使用不同的存储引擎存储数据是非常容易出现，对于这种情况基于statement的binlog容易出现非确定性的情况，mysql这时会将其标注为不可信赖且发布一个warning"Statement may not be safe to log in statement format."为了避免这种情况最好使用row-based的log格式。
 对于运行时更改binlog的格式，如果采用session级别则可能有这么几种情况。1.session使用where更新很多很多匹配行，这样基于语句就比基于row要更加高效。2.花费了非常多的时间或者执行了很多的语句，但最终只改变了很少一部分行，这是采用row-based更加有效。
 对于副本服务器，如果源服务器更改了log format，自己本身不会做相应转化，会执行报错处理。(这是不是说明，如果源服务器会更改的话，副本还是就采用mixed模式为好。)注意如果innodb采用提交读和读未提交，则只能使用row-based模式，哪怕在运行时更改了log模式会导致innodb不再具有插入的功能。
 对于DML语言和DDL语言，DML会遵循binlog的格式而DDL则会保持statement的格式，如是混合型语言如`CREATE TABLE ... SELECT`，则DML部分和DDL部分分开对待。
+
+#### binlog的组提交
 ### slow query log
 慢查询日志记录超过long_query_time时间和min_examined_row_limit的行数的sql语句。通过slow_query_log开启关闭慢查询日志，通过slow_query_log_file制定文件名和路径，如果不指定则默认data目录进行{host_name}-slow.log拼接。为了包含DDL语句的慢查询，需要开启log_slow_admin_statements变量。进一步的，如果想包含不使用索引的查询，启动log_queries_not_using_indexes系统变量。
 #### mysqldumpslow工具
@@ -73,8 +82,16 @@ options说明：
 -s				//排序，t:查询时间，l:上锁时间，r:影响的行数,c:数量
 -v				//verbose模式，展示更多的详细信息。
 ```
+
+### redolog和binlog的区别
+1. binlog产生于存储引擎的上层，不管什么存储引擎都会产生binlog，而redolog是在innodb层产生的。
+2. binlog记录逻辑性语句，即便是基于行格式也是逻辑上的记录，如(表，行，修改前值，修改后值)，而redo log则是记录物理页上的修改，类似(pageId,offset,len,修改前值，修改后值)。
+3. redolog是循环写，空间固定(只用记录最近的情况就行了)，而binlog是追加写。
+4. 事务提交时，先写redolog写完后进入prepare状态，再写binlog写完后(末尾写入XID event表示写完)再进入commit状态(即在redo log里面写一个commit记录)。(两阶段提交是否会出现XID event写入但redo log commit写入失败的情况呢？应该是理论上仅存在微小可能，因为两者之间的执行间隔应该非常的短，可以忽略不计。)
+
 ## 配置管理
 ### 不同环境的启动配置
+
 ```
 //可以使用1-2GB内存和拥有许多表，希望在中等数量的客户端上获得最大性能
 key_buffer_size=384M
@@ -96,6 +113,7 @@ read_buffer_size=8k
 net_buffer_length=1k
 //如果正在执行对比内存大很的表的group by或者order by操作，需要增大read_rnd_buffer_size加快排序操作后的行读取速度。
 ```
+
 ### [常用状态变量](https://dev.mysql.com/doc/refman/5.7/en/server-status-variables.html)（还有重要的系统变量等，有时间再细看）
 使用`show global status`查看必要的状态变量;
 
@@ -234,10 +252,10 @@ SELECT * FROM tbl_name
 #### 多范围读取优化
 使用二级索引的范围扫描取行可能会导致对基表的多次随机磁盘访问，而磁盘多范围扫描优化(multi-rang read)则是通过索引收集的键对其进行排序，减少随机访问磁盘次数。该项配置有optimizer_switch系统变量的mrr(启用优化)，mrr_cost_based(是否不偏向使用优化，因为存在如覆盖索引是访问索引完后不会再访问基表，这个排序操作没什么意义等情况。)其中用于排序索引的缓冲区大小由read_rnd_buffer_size系统变量控制。
 #### 条件过滤
-在表连接时，启用条件过滤可以使前缀表在选择索引时能不仅仅考虑where后面的索引条件，会考虑额外的索引外的条件。比如如果a索引能检索回1000行，而b索引能检索回10000行但能使用等值的条件过滤1%变成100行返回给后续的表使用，这时应该选择b索引（注意：1.条件只能是常量。2.条件过滤的where条件不能在索引内）。控制条件索引的系统变量："condition\_fanout\_filter"。（注意：在连接时，filtered的统计结果在最后不需要输出时，就没再统计了，所以是100%）
+在表连接时，启用条件过滤可以使前缀表在选择索引时能不仅仅考虑where后面的索引条件，会考虑额外的索引外的条件。比如如果a索引能检索回1000行，而b索引能检索回10000行但能使用等值的条件过滤1%变成100行返回给后续的表使用，这时应该选择b索引（注意：1.条件只能是常量。2.条件过滤的where条件不能在索引内）。控制条件过滤开关的系统变量："condition\_fanout\_filter"。（注意：在连接时，filtered的统计结果在最后不需要输出时，就没再统计了，所以是100%）
 #### order by优化
 index:为了避免filesort的额外开销，mysql可能会采用index来进行排序，即使index并没有完全匹配上order by后面的条件。如果使用select *去order by index，大概率不会使用索引，因为虽然可以通过索引去排序，但是排完序去源表拿完整行数据会导致多次随机I/O明显代价高于全表扫描然后排序，当然，如果只用select index倒是会使用索引（其实就是如果不用回表就会使用索引）。对于存在where key_part1 order by key_part2的情况，通过key_part1索引访问的行都是根据part2来排序的，通过这个结果也是可以节约排序操作的，对于随机访问I/O次数的问题select条件也许会筛除掉不少row减少代价，两者代价的取舍看mysql分析的统计情况了。使用group by会产生隐式排序，但请不要依赖隐式排序，请显式使用order by虽然会被优化器优化。  
-filesort: 内存中的排序，buffer的大小依赖于`sort_buffer_size`的大小，且必须容纳15个元组。每个元组的大小由`max_sort_length`系统变量配置，每行数据超过该系统变量部分则默认为相等。可以通过`show global status;`查看排序信息，如`Sort_scan`变量可以查看全表扫描排序的次数，`Sort_merge_passes`表示排序算法merge passes(指合并)出现次数。
+filesort: 内存中的排序，buffer的大小依赖于`sort_buffer_size`的大小，且必须容纳15个元组。每个元组的大小由`max_sort_length`系统变量配置，每行数据超过该系统变量部分则默认为相等。可以通过`show global status;`查看排序信息，如`Sort_scan`变量可以查看全表扫描排序的次数，`Sort_merge_passes`表示排序算法merge passes(指合并)出现次数。关于外部排序算法的选用，通过`max_length_for_sort_data`设置的行数值来进行调控，如果结果超过该值则使用算法1，未超过则使用算法3。(如果将该值设置的过高，则会导致磁盘I/O过高，这是由于导致临时文件过大，排序操作导致过多I/O。)
 
 msyql排序模式：
 
@@ -248,6 +266,14 @@ msyql排序模式：
 外部排序：
 1.mysql的外部排序采用的是多路归并(7路)的方式进行的，通过多次归并减少文件数量最后得到一个。2.mysql的临时文件只有一个，通过位偏移量来区分多个。3.对于limit则是采用优先队列的方式进行淘汰的，如果是limit m,n则一般是存m+n最后丢弃m的方式来实现。如果是存在外部排序的话，则还是采用原外部排序的方法，然后取相应位置的值即可。
 
+临时文件：
+对于外部排序所需要的临时文件，可以查看`tmpdir`系统变量来获取临时文件位置。对于Unix系统使用:对路径进行分割，建议使用多个物理磁盘而不是同一磁盘的多个分区进行分割。
+#### group by优化
+group by使用三种方式来实现，其中前两种会利用索引信息。
+
+1. loose index scan实现：仅通过索引信息即可扫描出结果，且不必详细比对所有索引，仅判断部分索引值便可得出结果。extra会出现using index for group-by
+2. tigh index scan实现：仅凭索引扫描出结果分组，但缺少比对信息，需要查询出相应数据与where比对后过滤输出。
+3. 建立临时表：全表扫描，建立临时表分组。extra会出现Using temporary。
 ### 子查询优化
 对于子查询mysql根据不同情况采用不同策略进行优化。  
 对于IN的情况：Semijoin，Materialization，EXISTS strategy
@@ -266,7 +292,19 @@ select * from supplier_cdn_vod_202106 as s1 join cdn_vod_202106 as s2  on s1.cdn
 
 #### 索引拓展
 innoDB通过将每个二级索引附加主键列来拓展二级索引，即将二级索引和主键一起组合成联合索引，可以通过`SET optimizer_switch = 'use_index_extensions=off';`开启。可以通过explain查看是否采用索引拓展的区别，主要可以通过rows查看索引查到的行数对比，或者ref能看明显用了2个const，或者key_len长度变化，或者没有使用using where表示没有在服务器用where条件筛选。([using where存疑,啥情况下会出现using where?吗的，使用主键查本地是正常的using index，服务器却会using where using index，不晓得为啥](https://dev.mysql.com/doc/refman/5.7/en/explain-output.html#explain_extra))
-**Loose Index Scan access**
+
+# innodb引擎
+## ACID
+### 一致性
+一致性体现在mysql崩溃时对数据的安全的保护，主要包含innodb双写buffer和崩溃恢复。
+双写buffer：innodb的pagesize一般为16kb，而文件系统对数据页的写入并不是原子操作，需要将多个数据页分别写入磁盘。而如果系统在这个时候崩溃，就会导致数据的不一致问题。其中系统崩溃分为两种情况，一种是物理页完整即不存在数据页只写了一半的问题，这只需要通过redo log进行崩溃恢复即可。而第二种情况是有些数据页有一部分写入成功导致partial page write问题，其中redo log记录的是对页的物理修改，无法对已损坏了的数据页进行redo操作(我们来猜测一下mysql redo的恢复过程，如果已经commit了,还没写入双写文件，则数据完全是干净的，直接按照redo重写即可。如果写入了双写文件，但目标文件写到一半，且出现页损坏。那么按照redolog重新执行写入的流程应该是，如果完成写的页直接跳过，完全没写的页直接写，而写了一半的页则无法直接处理，如遇见删除第十行数据的操作，该操作不具备幂等性，且不知道是否已经执行过了这就需要双写文件替换该被损坏的页。)。此时mysql的双写策略就派上了用场。mysql在写入数据时先将脏页的修改写入redo log文件，再将数据拷贝入double buffer，double buffer再先写入共享表空间(ibdata文件，但需要注意的是8.0.20之前位于系统表空间，之后则有专门的双写文件，可通过innodb\_doublewrite\_dir，innodb\_doublewrite\_files等参数调控)，再将数据写入真实的数据文件。此时虽然双写磁盘会造成额外的开销，但是开销基本上都会远远小于两倍，因为共享表空间的数据是连续存放顺序写入的，而真实的数据文件则是随机I/O写入的。  
+所以mysql对此类情况的处理是在恢复时先检查page的checksum,checksum就是检查page的最后事务号，已被损坏的页是无法通过校验的。如果未通过校验，mysql先找到共享表空间的该页副本来进行还原，再通过redo log来重做完整的页数据。
+
+完整恢复流程：1.表空间发现。2.应用redo log。3.回滚未完成事务。4.change buffer合并。5.清除
+##MVCC(多版本并发控制)
+
+## [redo log](https://www.cnblogs.com/f-ck-need-u/p/9010872.html#auto_id_8)
+
 ## mysql物理结构
 * 聚簇索引:innoDB存储引擎存储的表都是有聚簇索引的，一般为主键，如果没有主键则寻找合适的非空unique索引，如果还是没有则生成包含行id值的合成列作为隐藏聚簇索引，长度为6字节。  
 * 二级索引:聚簇索引外的称之为二级索引，当聚簇索引建立后，所有二级索引的叶子结点都为聚簇索引的key。所以如果索引列(主键也一样)很长，索引就会占用更多的空间，同时意味着更多的I/O，对查询也是不利的。  
@@ -286,7 +324,42 @@ InnoDB创建或重建索引时执行批量加载而不是一次一条的插入�
 innodb_data_home_dir =  
 innodb_data_file_path=/myibdata/ibdata1:50M:autoextend
 
+## Buffer Pool
+### instance
+buffer pool的实例大小为innodb\_buffer\_pool\_size/innodb\_buffer\_pool\_instances两个系统变量的计算，每个instance都有自己的锁，信号量，物理块(buffer chunks)以及逻辑链表。每个instance之间是相互独立的，可以并发读写，在数据库启动时被分配，在数据库关闭内存时释放。(当innodb\_buffer\_pool\_size小于1GB时，instances被重置为1，主要防止太多小的instance影响性能。)
+### buffer chunks
+buffer chunks是最底层的物理块，由两部分组成:1.控制体和与其对应的数据页。控制体中包含指针指向数据页，数据页包含控制信息如行锁，自适应hash和用户存储的信息。
+### 逻辑链表
+链表节点就是数据页的控制体，各种类型链表的节点拥有相同属性，方便管理。
 
+1. Free List:上面的节点均为未被使用的节点，Innodb需要保证Free List有足够的节点提供给用户线程使用，否则从FLU List或LRU List淘汰一定的节点。
+2. LRU List:LRU List按照最少使用算法排序，由两部分组成默认前5/8为young list存储经常被使用的热点page，后3/8为old list。新读入的page默认加到old list头，只有满足一定条件后才被移到young list上，主要是为了预读数据页和防止全表扫描污染buffer pool。
+3. FLU List:该链表上都是脏页节点，FLU List上的页面一定存在在LRU List上。由于数据页可能会在不同时刻被修改多次，数据页上记录了最老的一次修改的lsn，FLU List的节点按照oldest_modification
+排序，链表的尾端是最早被修改的数据页。(FLU List通过flush_list_mutex保证并发)
+
+### Buffer Pool预热
+MYSQL在重启时缓冲池没有什么数据，需要业务对数据库进行数据操作才能慢慢填充。所以在初期MySQL的性能不会特别好，特别Buffer Pool越大预热过程越长。为了缩短预热过程，可以把之前Buffer Pool中的页面数据存储到磁盘，等MySQL启动时直接加载磁盘数据即可。其中dump过程按space_id,page_no组成64位数字写到外部文件中，
 ## 死锁
 ### 处理死锁
 死锁状态确认:`show engine innodb status`;
+
+## [optimizer_trace](https://www.imooc.com/article/308721)
+## 分库分表
+### 使用符号连接
+使用datadir符号链接，将表空间分区分散到多个磁盘增加效率，可使用show variables like 'datadir'查看。
+### 分区
+注意事项：1.做分区时要么不定义主键，要么把分区字段加入到主键中。2.分区字段不为null。
+
+### 难点
+* 分布式事务的问题
+* 跨节点Join的问题
+* 跨节点合并排序分页的问题
+* 多数据源管理问题
+
+CREATE TABLE ti (id INT, amount DECIMAL(7,2), tr_date DATE)
+    ENGINE=INNODB
+    PARTITION BY HASH( MONTH(tr_date) )
+    PARTITIONS 6;
+# mycat
+[相关文档1](https://www.yuque.com/books/share/6606b3b6-3365-4187-94c4-e51116894695/fb2285b811138a442eb850f0127d7ea3)
+[相关文档2](http://www.mycat.org.cn/document/mycat-definitive-guide.pdf)
