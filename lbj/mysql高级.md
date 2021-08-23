@@ -280,10 +280,15 @@ group by使用三种方式来实现，其中前两种会利用索引信息。
 对于NOT IN的情况：Materialization, EXISTS strategy
 
 select * from supplier_cdn_vod_202106 as s1 join cdn_vod_202106 as s2  on s1.cdn = s2.cdn and s1.domain = s2.domain and s1.country = s2.country and s1.time = s2.time and s1.type = s2.type and s1.type = "month";
+
 ### 索引优化
+
 #### 概述
+
 索引虽然大大增加了查询速度，但是为不必要的列添加索引会造成如下缺点：1.索引会占用一定的空间2.mysql会花时间去抉择使用index。3.在增删改时会造成额外的代价去更新索引。
+
 #### 索引失效
+
 1. 不满足最左匹配原则
 2. filter条件不满足(mysql5.7居然没有？还是没开启详细信息之类的配置)
 3. like使用%前缀，或非常量
@@ -291,16 +296,31 @@ select * from supplier_cdn_vod_202106 as s1 join cdn_vod_202106 as s2  on s1.cdn
 5. order by的失效情况
 
 #### 索引拓展
+
 innoDB通过将每个二级索引附加主键列来拓展二级索引，即将二级索引和主键一起组合成联合索引，可以通过`SET optimizer_switch = 'use_index_extensions=off';`开启。可以通过explain查看是否采用索引拓展的区别，主要可以通过rows查看索引查到的行数对比，或者ref能看明显用了2个const，或者key_len长度变化，或者没有使用using where表示没有在服务器用where条件筛选。([using where存疑,啥情况下会出现using where?吗的，使用主键查本地是正常的using index，服务器却会using where using index，不晓得为啥](https://dev.mysql.com/doc/refman/5.7/en/explain-output.html#explain_extra))
 
-# innodb引擎
+## innodb引擎
+
 ## ACID
+
 ### 一致性
+
 一致性体现在mysql崩溃时对数据的安全的保护，主要包含innodb双写buffer和崩溃恢复。
 双写buffer：innodb的pagesize一般为16kb，而文件系统对数据页的写入并不是原子操作，需要将多个数据页分别写入磁盘。而如果系统在这个时候崩溃，就会导致数据的不一致问题。其中系统崩溃分为两种情况，一种是物理页完整即不存在数据页只写了一半的问题，这只需要通过redo log进行崩溃恢复即可。而第二种情况是有些数据页有一部分写入成功导致partial page write问题，其中redo log记录的是对页的物理修改，无法对已损坏了的数据页进行redo操作(因为写了一半的页无法直接处理，如遇见删除第十行数据的操作，该操作不具备幂等性，且不知道执行到哪一步了。)。此时mysql的双写策略就派上了用场。mysql在写入数据时先将脏页的修改写入redo log文件，然后通过两阶段提交完成binlog和redo log写入，最后状态位置为commit.然后再将将数据拷贝入double buffer，double buffer再先写入共享表空间(ibdata文件，但需要注意的是8.0.20之前位于系统表空间，之后则有专门的双写文件，可通过innodb\_doublewrite\_dir，innodb\_doublewrite\_files等参数调控)，再将数据写入真实的数据文件。此时虽然双写磁盘会造成额外的开销，但是开销基本上都会远远小于两倍，因为共享表空间的数据是连续存放顺序写入的，而真实的数据文件则是随机I/O写入的。  
 所以mysql对此类情况的处理是在恢复时先检查page的checksum,checksum就是检查page的最后事务号，已被损坏的页是无法通过校验的。如果未通过校验，mysql先找到系统表空间的该页副本直接替换来进行还原.而如果是完整的数据页，则判断先系统表空间是否有副本，即双写文件又没写好，如果没有则通过redo log来重做页数据。
 
 完整恢复流程：1.表空间发现。2.应用redo log。3.回滚未完成事务。4.change buffer合并。5.清除。
+
+### 事务隔离级别
+
+一般默认情况是可重复读，但对于大批量数据报告，对数据的精度和重复性要求低于锁的开销，建议使用低级别的读已提交和读未提交的隔离级别。而串行化则一般用于XA事务，或者定位并发和死锁问题。
+
+## InnoDB的锁
+
+* 共享(s)和独占锁(x):也就是读写锁，持有读锁的可以共享，读写，写写互斥。
+* 意向锁:意向锁是表级锁(mysql支持多粒度的锁，如表锁和行锁)，表明该事务随后将在该表的哪一行使用共享锁(is)或独占锁(ix)(意思是设置或者说比较时是表锁，用起来是行锁？)，意向锁的主要目的就是用作行锁，或者表明某人将要使用行锁。如`lock tables ... write`将对表设置x，`select ... lock in share mode`将对表设置is,而`select ... for update`将设置ix。表级锁的兼容性如下：![兼容性](https://dev.mysql.com/doc/refman/5.7/en/innodb-locking.html)
+* 记录锁:记录锁用于利用索引锁住所有相关修改，如`SELECT c1 FROM t WHERE c1 = 10 FOR UPDATE`将阻止t.c1=10的所有行insert,delete和update。不匹配行的记录锁将会在mysql评估完where条件后释放，for update语句将会给出最新已提交版本(半一致性读),以保证where的条件能正确筛选更新。所以行锁在 InnoDB中是基于索引实现的，所以一旦某个加锁操作没有使用索引，那么该锁就会退化为表锁。(此句话网上帖子，不是官方，真实性存疑，但我觉得可以理解)
+* 间隙锁:用来锁住一段范围的索引记录防止插入，如`SELECT c1 FROM t WHERE c1 BETWEEN 10 and 20 FOR UPDATE`将会锁住10-20的范围，阻止15的插入无论是否已经存在了该值。间隙锁可以跨越单个索引，多个索引甚至是空(指不存在的值)，是并发性和性能之间的折中。间隙锁对唯一索引的唯一值匹配是不生效的，只会对非唯一索引和没有索引的等值匹配锁住前面的间隙。不同事务的间隙锁是允许重叠的，如果删除索引的记录发生，则两个间隙锁的范围将会被合并(取消被两个事务中较晚的那个？)。因为间隙锁是单纯的抑制类锁，重叠后造成的效果是一致的。当然，可以通过使用读已提交和开启`innodb_locks_unsafe_for_binlog`配置，使间隙锁仅仅在外键约束和重复检查这两个地方生效。
 
 ## MVCC(多版本并发控制)
 
@@ -321,11 +341,41 @@ InnoDB的MVCC在对待聚簇索引和二级索引是有区别的，聚簇索引�
 
 其中在二级索引中，对于覆盖索引和索引下推的处理方式是不同的。如果是在事务中有值被更新或者删除了，索引覆盖是不会被启用的，而索引下推会将所有符合条件的值全部返回回来。然后，将返回回来的值通过聚簇索引校验比对版本，不符合要求的删除或修复。(对于此段，有两个问题。1.覆盖索引不能启用，那么检测更新或删除是如何做的，难道是一旦开启了事务就不能使用覆盖索引了？2.全部查过来，是如何获取对应值的所有版本号的，难道是直接查log?不然感觉会有遗漏，比如当前是但被改过了，就不是了，然后查不到。)
 
+## 非锁一致性读
+
+非锁的一致性读意味着InnoDB使用多版本并发控制去读数据库在某时刻的快照。所谓一致性读，就是该查询只能看见在本事务开始时间点之前提交的事务，不能看见之后的或未提交的事务更改。但这个规则的例外就是，同一个事务的查询能否看见自己之前的修改。这个意外对应一种异常情况，即本事务之前修改过一个行，但由于这个行没有提交，从规则上来讲应该看不见自己的修改。如果有其他会话同时也修改了该行，你甚至有可能会看见表中数据处于一种在数据库中从没有存在过的状态。
+
+如果事务是默认的隔离级别--可重复读，所有的一致性读将会读在本事务第一次快照读建立时的值。如果需要读取更新的快照，需要结束本事务然后开启新的查询。而如果是读已提交的隔离级别，则会读取该数据最新的快照。(实际上学到这，应该就能明白依赖快照纯mvcc并不能完全解决并发性问题，还是得依赖锁之类的工具去解决。举个例子，两个事务并行执行先查库存大于1，然后减1的情况。如果两个事务同时查到还剩最后一个，然后同时减一，mvcc并不能阻止bug的产生。)一致性读是读已提交和可重复读隔离级别的默认读取模式，但如果是select ... for update则将被mysql认为是DML，一致性读失效。在mysql中，DML如update,delete,insert等语句一致性读是失效,取而代之的是使用加锁来处理，如下例子：
+
+```mysql
+SELECT COUNT(c1) FROM t1 WHERE c1 = 'xyz';
+-- Returns 0: no rows match.
+DELETE FROM t1 WHERE c1 = 'xyz';
+-- Deletes several rows recently committed by other transaction.
+
+SELECT COUNT(c2) FROM t1 WHERE c2 = 'abc';
+-- Returns 0: no rows match.
+UPDATE t1 SET c2 = 'cba' WHERE c2 = 'abc';
+-- Affects 10 rows: another txn just committed 10 rows with 'abc' values.
+SELECT COUNT(c2) FROM t1 WHERE c2 = 'cba';
+-- Returns 10: this txn can now see the rows it just updated.
+```
+
+一致性读对于某些DDL语言也是失效的，如DROP_TABLE和ALTER_TABLE复制源表然后删除源表等操作。然后就是对于INSERT INTO ... SELECT,UPDATE ... (SELECT)等字句中并未定义FOR UPDATE和LOCK IN SHARE MODE的情况会根据配置不同产生不同差异。如果是默认情况下将会使用锁，然后SELECT部分将会采用读已提交的模式读取最新副本。当然如果使用`innodb_locks_unsafe_for_binlog`模式，将会避免使用锁。
+
+## 读锁
+
+## 死锁
+
+### 处理死锁
+
+死锁状态确认:`show engine innodb status`;SHOW ENGINE INNODB STATUS 和 InnoDB monitor都是监控InnoDB状态的手段，需要熟练使用。
+
 ## undo log
 
 一份undo log日志是由单个读写事务的undo log记录集合组成。其中undo log记录包含了如何撤销上个事务的更改对聚簇索引记录的更改。undo log存储在全局临时表空间(临时表空间存储InnoDB非压缩的临时表和相关对象，在MYSQL5.7版本被引入。可以通过`innodb_temp_data_file_path`配置临时表的路径，name等临时表空间相关属性。如果该项配置未配置，则会创建一个12mb的自拓展名为ibtmp1的文件，在data目录。临时表空间文件在mysql启动时被创建--如未创建成功则无法启动，关闭或退出时被删除，如果是崩溃退出则不会被删除，可手动删除或mysql保持相同配置重启时重建。)中，他们不会被redo-logged，因为他们不需要在崩溃时进行回复工作。
 
-每个undo表空间或者全局临时表空间最大支持128个回滚段，当然也可以通过`innodb_rollback_segments`来定义回滚段的数量。而每个回滚段支持多少事务，取决于回滚段的undo slots数量和每个事务需要多少undo logs。回滚段undo slots的大小取决于InnoDB页大小，如下所示:
+每个undo表空间或者全局临时表空间最大支持128个回滚段，当然也可以通过`innodb_rollback_segments`来定义回滚段的数量。而每个回滚段支持多少事务，取决于回滚段的undo slots数量和每个事务需要多少undo logs。回滚段undo slots的数量取决于InnoDB页大小(由下表可知槽大小为16b)，如下所示:
 |InnoDB 页大小|每个回滚段的Undo Slots大小(page size/16)|
 |:----:|:----:|
 |4KB|256|
@@ -333,6 +383,20 @@ InnoDB的MVCC在对待聚簇索引和二级索引是有区别的，聚簇索引�
 |16KB|1024|
 |32KB|2048|
 |64KB|4096|
+每个事务最多被分配4个undo logs，其中每个对应以下操作类型：
+
+1. 用户定义的表中的插入操作。
+2. 用户定义的表中的更新|删除操作。
+3. 用户定义的临时表中的插入操作。
+4. 用户定义的临时表中的更新|删除操作。
+
+Innodb只会按需分配所需的undo log，对于用户对普通表的操作将会把undo log分配至系统表空间或则undo表空间的回滚段，对于临时表的操作会将undo log分配至临时表空间的回滚段。由之前的数据信息可以分析出同时执行的事务并发上线，当undo slots不够用时，该事务将会重新尝试执行。当然，如果事务操作发生在临时表，则事务的读写并发同时受限于临时表空间的32大小的回滚段。
+
+```mysql
+(page_size/16)*32       //临时表只有插入或update操作,如果同时存在，按上文分析则会对半分，数量下降一半。
+(innodb_page_size/16)*(innodb_rollback_segements)    //普通表只有插入或update操作，如果同时存在，下降一半。
+
+```
 
 ## redo log
 
@@ -351,6 +415,8 @@ redolog在磁盘上的物理表示为ib_logfile0和ib_logfile1两个文件,mysql
 InnoDB像大多数服从ACID的数据库一样，刷新redolog在事务committed之前。但为了提高吞吐量，InnoDB避免每次commit就刷新日志，而是将同时刻的多个事务一起commit。
 
 ## mysql物理结构
+
+![mysql架构](https://dev.mysql.com/doc/refman/5.7/en/images/innodb-architecture.png)
 
 * 聚簇索引:innoDB存储引擎存储的表都是有聚簇索引的，一般为主键，如果没有主键则寻找合适的非空unique索引，如果还是没有则生成包含行id值的合成列作为隐藏聚簇索引，长度为6字节。  
 * 二级索引:聚簇索引外的称之为二级索引，当聚簇索引建立后，所有二级索引的叶子结点都为聚簇索引的key。所以如果索引列(主键也一样)很长，索引就会占用更多的空间，同时意味着更多的I/O，对查询也是不利的。  
@@ -375,11 +441,17 @@ innodb_data_home_dir =
 innodb_data_file_path=/myibdata/ibdata1:50M:autoextend
 
 ## Buffer Pool
+
 ### instance
+
 buffer pool的实例大小为innodb\_buffer\_pool\_size/innodb\_buffer\_pool\_instances两个系统变量的计算，每个instance都有自己的锁，信号量，物理块(buffer chunks)以及逻辑链表。每个instance之间是相互独立的，可以并发读写，在数据库启动时被分配，在数据库关闭内存时释放。(当innodb\_buffer\_pool\_size小于1GB时，instances被重置为1，主要防止太多小的instance影响性能。)
+
 ### buffer chunks
+
 buffer chunks是最底层的物理块，由两部分组成:1.控制体和与其对应的数据页。控制体中包含指针指向数据页，数据页包含控制信息如行锁，自适应hash和用户存储的信息。
+
 ### 逻辑链表
+
 链表节点就是数据页的控制体，各种类型链表的节点拥有相同属性，方便管理。
 
 1. Free List:上面的节点均为未被使用的节点，Innodb需要保证Free List有足够的节点提供给用户线程使用，否则从FLU List或LRU List淘汰一定的节点。
@@ -390,12 +462,6 @@ buffer chunks是最底层的物理块，由两部分组成:1.控制体和与其�
 ### Buffer Pool预热
 
 MYSQL在重启时缓冲池没有什么数据，需要业务对数据库进行数据操作才能慢慢填充。所以在初期MySQL的性能不会特别好，特别Buffer Pool越大预热过程越长。为了缩短预热过程，可以把之前Buffer Pool中的页面数据存储到磁盘，等MySQL启动时直接加载磁盘数据即可。其中dump过程就是将数据页按space_id,page_no组成64位数字，写到外部文件中。
-
-## 死锁
-
-### 处理死锁
-
-死锁状态确认:`show engine innodb status`;
 
 ## [optimizer_trace](https://www.imooc.com/article/308721)
 
