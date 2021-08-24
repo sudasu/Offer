@@ -1,35 +1,55 @@
 # [mysql](https://dev.mysql.com/doc/refman/5.7/en/innodb-deadlocks-handling.html)
+
 ## 基础
+
 mysql的模式匹配:`like`语句支持%以匹配一个或多个,`_`匹配一个，也可以通过`regexp`来使用正则表达式。为使得`regexp`区分大小写可以使用`binary`转化成二进制字符串，如`regexp binary '^b'`。(^:以...开头，$:以...结尾,.:任意一个字符,{n}:前一个规则重复5次。)  
 mysqld\_safe:在UNIX上启动mysqld服务器的推荐方法，mysqld\_safe通过读取options file的[mysqld\_safe]或[safe\_mysqld]部分启动了些安全功能，例如发生错误时重启服务器，将错误信息记录到错误日志。
 
 取消查询:需要先输入相应的结束符，再输入\c。
+
 ## 数据类型
-###日期时间
+
+### 日期时间
+
 ```
   ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   dt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
  ```
+
  上述两类数据类型可以在update时自动更新相应值，CURRENT_TIMESTAMP具有同意词(NOW(),LOCALTIME,LOCALTIME())。
+
 ## [mysql数据目录](https://dev.mysql.com/doc/refman/5.7/en/data-directory.html)
+
 ### [系统数据库](https://dev.mysql.com/doc/refman/5.7/en/system-schema.html)
+
 mysql database存储着系统中重要的信息，这些存储信息的表按照授权系统，日志系统等类型进行分组。
+
 ## 日志
+
 ### 介绍
+
+```
 Error log				//Problems encountered starting, running, or stopping mysqld  
 General query log		//Established client connections and statements received from clients  
 Binary log				//Statements that change data (also used for replication)  
 Relay log				//Data changes received from a replication source server  
 Slow query log			//Queries that took more than long_query_time seconds to execute  
 DDL log (metadata log)	//Metadata operations performed by DDL statements  
+```
 
 注意：1.如果开启了日志，一般日志存于mysql的data目录下。2.对于flush log，binary log将会关闭当前log file并根据index重新创建log打开，而err log,slow query log都只是close然后reopen。
+
 ### error log
+
 通过配置log_error=file配置error log的输出，如果file不存在则拼接{host_name}.err在data目录下，如果都不存在则直接输出在console。
+
 ### general query log
+
 对于一般查询日志会记录mysqld做了哪些事儿。会记录tcp/unix/管道等各种连接以及关闭，各种sql语句的执行，即使执行失败了。与binlog相比，query log会按照收到的语句顺序去记录而不是根据excuted but before any locks are released的顺序录入。(query log会记录查询语句，这些都是非常耗费性能的，所以默认是关闭的)
 一般情况下query log是被禁止的。可以查看general_log系统变量，如果没有值或者1则表示query log是启用了的。如果为0则表示未启用，可以`set @@global.general_log = 1`启用。对于general_log_file=file_name，如果没有定义file_name仍然会拼接成host_name.log在data目录下。
+
 ### binary log
+
 binlog主要包含描述数据库数据更改的statement,如表创建修改，表数据创建修改等操作。binlog在包含每个语句的同时还包含语句花费多少时间去更新的信息。binlog主要用于两个目的，一个是为了执行复制，源服务器发送包含在binlog的变化事件给副本以执行与源相同的操作，一个是为了进行恢复操作，当某一个时间点的数据被备份了，可以使用期间的binary log使得期间发生的命令继续再执行一次，以达到更新。当然binlog不会记录show,select等不会修改数据的语句。  
 想要查看binlog相关参数可以使用`show variables like "%bin%"`。binlog的name由bin\_basename+.index组成，如果自己在basename里包含.extension，则extension会被忽略。
 新的binlog的创建根据以下三种情况创建：1.服务器启动或重启。2.服务器flush了log。3.log文件的大小到达了max\_binlog\_size(binary log file有可能会大于max\_binlog\_size，因为有可能创建了一个比较大的事务，而事务内数据的写入是不会分开在其他文件中)。
@@ -40,6 +60,7 @@ purge binary logs例子：
 purge binary logs to 'mysql-bin.010';				      //指定清除文件
 purge binary logs before '2019-04-02 22:46:26';	      //根据日期来进行清除
 ```
+
 对于before后面的datetime参数需保证'YYYY-MM-DD hh:mm:ss'的format。当副本正在进行复制时，此语句也可以安全运行，不需要额外阻止它。当活动副本正在读取尝试删除的日志文件之一，此语句不会删除正在使用的日志或该日志文件之后的日志文件，但会删除之前交早的日志文件。但如果副本读取时，碰巧已经删除了它未读取的日志文件，则该副本无法进行复制操作。
 安全清理二进制日志文件，按照如下步骤执行：
 
@@ -54,9 +75,13 @@ purge binary logs before '2019-04-02 22:46:26';	      //根据日期来进行清
 binlog的写入会在任何锁被释放前或者commit之前，如对于非提交事务mysql在接受到commit指令之前会先缓存指令，然后在commit执行之前将记录写入binlog，而非事务表则会在执行完成后立即写入。当一个线程开始处理事务，会分配一个buffer(大小取决于binlog\_cache\_size)去缓存语句，如果语句的大小超过了buffer则会开一个临时文件去存储事务，临时文件在线程结束时会被删除。
 
 对于binary log，row based logging并发的inser会被转换成为正式的插入如create ... select和inset ... select，这是为了还原备份操作时能确实重建表，而如果是statement-based logging就只会存储原始语句。
+
 #### 异步和同步刷盘binlog
+
 默认情况下sync\_binlog（同步写入）是开启的，这样能保证在事务commit之前能写入disk。但是这样会导致如果日志落盘和commit之间宕机，使得日志与事实不一的情况，mysql默认采用与redolog的xa事务解决此问题。在mysql崩溃重启后。在回滚事务之前mysql扫描最近的binary log文件检查最近事务的xid值以计算最近有效的binary log file(删除xid后的无效数据)，恢复正确的binlog日志。在某次事务中，由于两阶段提交的原理如果binlog能恢复成功，则就可以使用redolog恢复之前事务的执行，而binlog不能恢复成功，则本次事务无法恢复执行失败。(<s>我猜测外部程序员观察事务的执行情况应该是在binlog完成commit状态修改后，就会返回commit状态当然也有可能是真的完全执行完了再发送信息，发送信息过程也会出现丢失的情况，但对数据库而言就不关心这方面的具体内容了。</s>上述思考并不重要，mysql都宕机了还想api确定执行状态，直接查看mysql日志信息即可确认。)
+
 #### binlog的格式
+
 * --binlog-format=STATEMENT：基于sql语句的binlog格式
 * --binlog-format=ROW：基于单个表的行是如何受影响的(注意，binlog本质上还是逻辑日志，row格式也是逻辑上的描述。)
 * --binlog-format=MIXED：log的mode默认为statement，但是会基于一些情况转化成row
@@ -66,10 +91,12 @@ binlog的写入会在任何锁被释放前或者commit之前，如对于非提�
 对于副本服务器，如果源服务器更改了log format，自己本身不会做相应转化，会执行报错处理。(这是不是说明，如果源服务器会更改的话，副本还是就采用mixed模式为好。)注意如果innodb采用提交读和读未提交，则只能使用row-based模式，哪怕在运行时更改了log模式会导致innodb不再具有插入的功能。
 对于DML语言和DDL语言，DML会遵循binlog的格式而DDL则会保持statement的格式，如是混合型语言如`CREATE TABLE ... SELECT`，则DML部分和DDL部分分开对待。
 
-#### binlog的组提交
 ### slow query log
+
 慢查询日志记录超过long_query_time时间和min_examined_row_limit的行数的sql语句。通过slow_query_log开启关闭慢查询日志，通过slow_query_log_file制定文件名和路径，如果不指定则默认data目录进行{host_name}-slow.log拼接。为了包含DDL语句的慢查询，需要开启log_slow_admin_statements变量。进一步的，如果想包含不使用索引的查询，启动log_queries_not_using_indexes系统变量。
+
 #### mysqldumpslow工具
+
 调用格式为mysqldumpslow [options] [log_file]，一般来说mysqldumpslow会对结果进行分组，抽象string为s，number为n。
 
 ```
@@ -84,12 +111,14 @@ options说明：
 ```
 
 ### redolog和binlog的区别
+
 1. binlog产生于存储引擎的上层，不管什么存储引擎都会产生binlog，而redolog是在innodb层产生的。
 2. binlog记录逻辑性语句，即便是基于行格式也是逻辑上的记录，如(表，行，修改前值，修改后值)，而redo log则是记录物理页上的修改，类似(pageId,offset,len,修改前值，修改后值)。
 3. redolog是循环写，空间固定(只用记录最近的情况就行了)，而binlog是追加写。
 4. 事务提交时，先写redolog写完后进入prepare状态，再写binlog写完后(末尾写入XID event表示写完)再进入commit状态(即在redo log里面写一个commit记录)。(两阶段提交是否会出现XID event写入但redo log commit写入失败的情况呢？应该是理论上仅存在微小可能，因为两者之间的执行间隔应该非常的短，可以忽略不计。)
 
 ## 配置管理
+
 ### 不同环境的启动配置
 
 ```
@@ -115,26 +144,36 @@ net_buffer_length=1k
 ```
 
 ### [常用状态变量](https://dev.mysql.com/doc/refman/5.7/en/server-status-variables.html)（还有重要的系统变量等，有时间再细看）
+
 使用`show global status`查看必要的状态变量;
 
 ```
 aborted_clients								//由于客户端没有正确关闭连接的情况下死亡而中止的连接数
 aborted_connects							//尝试连接mysql而失败的次数
 ```
+
 ### sql_mode
+
 默认的sql模式包含如下几种**ONLY_FULL_GROUP_BY， STRICT_TRANS_TABLES， NO_ZERO_IN_DATE， NO_ZERO_DATE， ERROR_FOR_DIVISION_BY_ZERO， NO_AUTO_CREATE_USER，和 NO_ENGINE_SUBSTITUTION**。  
 ONLY_FULL_GROUP_BY模式：默认开启，强制未分组字段必须使用聚合函数，如果关闭后不能进行分组的字段将会自由选取行数据以填充。
 STRICT_TRANS_TABLES模式：和STRICT_ALL_TABLES模式一样属于严格sql模式，对于在事务表遇见错误都会回滚，对除以0，某些数据类型插入0值之类非法数值会报错。但对于非事务表的多个更新，插入操作出现错误，两者的区别在于本模式会警告并调整结果继续插入，而STRICT_ALL_TABLES则会出现错误中止操作导致部分更新。
  ERROR_FOR_DIVISION_BY_ZERO模式：未启用该模式则除以0会插入null且不警告，启用则插入null并警告，同时启用严格模式和本模式则会error。  
 
 ## 服务器
+
 ### 连接管理
+
  mysql处理与客户的连接分为3种类型：1.全平台可用的tcp/ip连接。2.Unix平台下Unix套接字连接。3.Windows平台下的共享内存连接请求，命名管道连接请求。（可以通过系统变量skip_networking，禁止tcp/ip连接，这通常用于仅本地使用的数据库）  
  连接线程的配置管理：1.thread_cache_size**状态变量**确定线程缓存大小，默认情况下服务器启动时自动调整，也可以在运行时设置。2.thread_stack设置服务器的线程栈空间的大小。3.threads_created为处理连接而创建的线程数，threads_cached线程缓存中的线程数。4.max_connections可以设置最大值，一般来说可以支持500到1000个连接，如果内存很大工作负载不高响应也快，最多可达10000个。其中最大连接连接值受文件描述符大小的硬性限制，包括open_files_limit**系统变量**，甚至操作系统文件描述符大小。
+
 ### 主机缓存
+
 mysql只缓存非本机的TCP连接，对于环回地址，unix套接字，命名管道，共享内存建立的连接不使用缓存，缓存的表信息存于performance_schema数据库的host_cache表。主机缓存的目的在于：1.减少dns查询转换。(说明mysql为了方便管理员操作，默认使用域名而不是ip来标识，其中可以使用skip_name_resolve系统变量禁止dns解析)2.保存有关客户端连接过程中发生的错误信息（注意：系统变量host_cache_size控制缓存数据条数，如果超过了就会丢失最少使用的主机缓存，在丢失的过程中会损失错误信息，这样等新建立连接时如该主机连接是被阻止则阻止将会被放开。）。当然，如果因为网络故障导致连接被阻止，可以truncate或者正常sql操作处理host_cache表来满足需求。
+
 ## 数据备份和恢复
+
 ### mysqldump备份
+
 常用dump指令：
 
 ```
@@ -168,8 +207,11 @@ mysql db1 < t1.sql						                //使用分隔文本存储时会默认�
 mysqlimport db1 t1.txt							    //导入数据
 mysqlimport --fields-terminated-by=,.... db1 t1.txt      //如果使用了其他数据格式
 ```
+
 ### 时间点恢复
+
 #### binary log的时间点恢复
+
 常用的检查log的指令:
 
 ```
@@ -180,6 +222,7 @@ mysqlbinlog binlog_files > tmpfile				//将log文件输出到文件中，并进�
 mysql -u root -p <tmpfile					//再将编辑过的数据导入
 mysql binlog.01 binlog.02 | mysql -u root -p	//加载多个binlog应放在一起使用，如果分开使用将导致如第一个文件创建了临时表读完文件后就删除了，而读第二个文件却又依赖第一个表的问题。
 ```
+
 #### 使用事件位置的时间点恢复
 
 ```
@@ -188,10 +231,15 @@ mysql binlog.01 binlog.02 | mysql -u root -p	//加载多个binlog应放在一起
 --start-position=1006
 --stop-position=1868						//不建议使用datetime去输出log，因为这样会有遗漏的风险，常用datetime过滤范围，根据具体的内容找到相应postion进行输出。输出格式同上，只需要加上后缀即可。
 ```
+
 ### 备份恢复的逻辑
+
 1.使用全量备份的sql导入数据库。2.使用增量备份的binlog，通过mysqlbinlog工具导入数据库。
+
 ## 优化
+
 ### 概述
+
 数据库级别的优化
 
 * 选择合适的表结构，每一列选择合适的数据类型，每一张表选择合适的列类型，如频繁更新数据的情况选择多表少行，分析大量数据的表选择多行少表。
@@ -209,20 +257,28 @@ mysql binlog.01 binlog.02 | mysql -u root -p	//加载多个binlog应放在一起
 * 内存带宽：当cpu需要的数据超过了cpu缓存容量时，主存带宽就成为了瓶颈，这对大多数操作系统而言并不常见，但是需要注意
 
 ### select语句优化
+
 `analyze table table_name`用于分析更新table的数据分布信息，如cardinality信息以便于优化器选择合适的优化策略。(因为table的数据分布在insert等update过程中，不可能实时的去更新表数据分布信息，这样会浪费很多性能，所以需要定期的更新下数据的分布信息。)
+
 #### where子句优化
+
 常规优化：1.去除不必要的括号。2.恒等式转化。3.恒等条件去除如1==1。4.索引使用的常量表达式只计算一次。5.检索前期就检测无效的表达式。6.having和where如果不使用聚合函数或group，则合并。7.优化连接的组合。8.使用覆盖索引。9.根据使用索引顺序进行排序。
+
 #### 相关子查询
+
 嵌套在其他查询中的查询称为子查询或内部查询，包含子查询的查询称为主查询或外部查询。
 不相关子查询：内部查询独立于外部查询，内部查询仅执行一次，执行完毕后将结果作为外部查询的条件使用。
 相关子查询：内部查询的执行依赖外部的查询数据，外部查询执行一次内部查询就会执行一次。即先从外部查询表中取出一个数据项，再将数据项传入内部查询执行内部查询，根据内部查询执行的结果判断。
+
 #### range优化（注意：单个索引）
+
 1. 对于rang优化mysql采用将各个区间转换为一个范围的方式进行优化，如重叠范围的条件将被合并，空范围的将被去掉。（注意like使用通配符作为前缀的匹配不会现阶段被使用,还有就是如果是等于之类的使用or,and才是range）
 2. 对于索引多值的or/in匹配，mysql优化器会采用dive index的方式去准确评估索引每个区间的两端计算匹配的cost(也可以采用index statistics来估算，这样比较快但估算的准确度取决于统计信息的正确程度，可以使用analyze table去更新统计信息。)。当然value越多，dive index的时间越长，可以通过eq_range_index_limit系统变量去限制dive index的数量。不使用dive index有那么几种情况，1.存在子查询。2.使用聚合，group by。3.使用了force index。
 3. 可以优化表达式如`SELECT ... FROM t1 WHERE ( col_1, col_2 ) IN (( 'a', 'b' ), ( 'c', 'd' ));`。但注意最好不要同时使用in，和or，如联合索引c1,c2,c3，c1 or in(c2,c3)只会使用c1索引而不会充分利用所有索引值。
 4. range优化将会受到range_optimizer_max_mem_size系统变量的限制，如超出限制将会发出warning，并可能采用全表扫描。范围的内存的估计可以按一个or230字节，一个and125字节，如过是and和in的组合，in的每一个数据都按or来计算，然后两两相乘。
 
 #### index merge
+
 index merge通过对where后的多个不同索引条件下的range访问，并行使用索引查找，然后通过union,intersect,unions-of-intersections等方法进行合并得到一个结果。注意：满足条件后，mysql也不是一定会这样操作，具体看explain。  
 index merge的使用条件：1.对于条件的n parts的等于表达式，索引确实能完全包含表达式中的所有字段。2.对主键使用了范围查询的条件。(依赖索引的filter，如果filter<60%直接忽略该索引，进行全表scan。)  
 
@@ -232,6 +288,7 @@ index merge的使用条件：1.对于条件的n parts的等于表达式，索引
 (x AND y) OR z => (x OR z) AND (y OR z)
 (x OR y) AND z => (x AND z) OR (y AND z)
 ```
+
 可以在explain中查看extra字段来判断index merge，展示结果如Using intersect(...)，Using union(...)，Using sort_union(...)
 
 此部分的控制可在**optimizer_switch**里面查看，如index_merge,index_merge_intersection,...等参数状况。启动单一算法，可以关闭index_merge，然后开启单一算法。
@@ -247,13 +304,21 @@ SELECT * FROM tbl_name
 SELECT * FROM tbl_name
   WHERE (key_col1 > 10 OR key_col2 = 20) AND nonkey_col = 30;
 ```
+
 #### 索引下推
+
 索引下推是对使用索引的sql语句的一种优化，当使用了索引下推后，explain将会在extra字段展示using index condition语句。索引下推直接将符合索引判断的where条件都下放到存储引擎，使得能够完成联合索引的情况，也可以实现一次性in的多值判断的情况。这样一方面存储引擎可以减少访问全行数据，减少基表查数据的次数，同时也减少了mysql服务器访问存储引擎的次数。可通过`SET optimizer_switch = 'index_condition_pushdown=on';`指令来启动索引下沉。using index condition 和 using index的区别：主要在于索引下沉需要访问full row，而覆盖索引在索引上就能的到想要的结果不用访问基表。
+
 #### 多范围读取优化
+
 使用二级索引的范围扫描取行可能会导致对基表的多次随机磁盘访问，而磁盘多范围扫描优化(multi-rang read)则是通过索引收集的键对其进行排序，减少随机访问磁盘次数。该项配置有optimizer_switch系统变量的mrr(启用优化)，mrr_cost_based(是否不偏向使用优化，因为存在如覆盖索引是访问索引完后不会再访问基表，这个排序操作没什么意义等情况。)其中用于排序索引的缓冲区大小由read_rnd_buffer_size系统变量控制。
+
 #### 条件过滤
+
 在表连接时，启用条件过滤可以使前缀表在选择索引时能不仅仅考虑where后面的索引条件，会考虑额外的索引外的条件。比如如果a索引能检索回1000行，而b索引能检索回10000行但能使用等值的条件过滤1%变成100行返回给后续的表使用，这时应该选择b索引（注意：1.条件只能是常量。2.条件过滤的where条件不能在索引内）。控制条件过滤开关的系统变量："condition\_fanout\_filter"。（注意：在连接时，filtered的统计结果在最后不需要输出时，就没再统计了，所以是100%）
+
 #### order by优化
+
 index:为了避免filesort的额外开销，mysql可能会采用index来进行排序，即使index并没有完全匹配上order by后面的条件。如果使用select *去order by index，大概率不会使用索引，因为虽然可以通过索引去排序，但是排完序去源表拿完整行数据会导致多次随机I/O明显代价高于全表扫描然后排序，当然，如果只用select index倒是会使用索引（其实就是如果不用回表就会使用索引）。对于存在where key_part1 order by key_part2的情况，通过key_part1索引访问的行都是根据part2来排序的，通过这个结果也是可以节约排序操作的，对于随机访问I/O次数的问题select条件也许会筛除掉不少row减少代价，两者代价的取舍看mysql分析的统计情况了。使用group by会产生隐式排序，但请不要依赖隐式排序，请显式使用order by虽然会被优化器优化。  
 filesort: 内存中的排序，buffer的大小依赖于`sort_buffer_size`的大小，且必须容纳15个元组。每个元组的大小由`max_sort_length`系统变量配置，每行数据超过该系统变量部分则默认为相等。可以通过`show global status;`查看排序信息，如`Sort_scan`变量可以查看全表扫描排序的次数，`Sort_merge_passes`表示排序算法merge passes(指合并)出现次数。关于外部排序算法的选用，通过`max_length_for_sort_data`设置的行数值来进行调控，如果结果超过该值则使用算法1，未超过则使用算法3。(如果将该值设置的过高，则会导致磁盘I/O过高，这是由于导致临时文件过大，排序操作导致过多I/O。)
 
@@ -268,13 +333,17 @@ msyql排序模式：
 
 临时文件：
 对于外部排序所需要的临时文件，可以查看`tmpdir`系统变量来获取临时文件位置。对于Unix系统使用:对路径进行分割，建议使用多个物理磁盘而不是同一磁盘的多个分区进行分割。
+
 #### group by优化
+
 group by使用三种方式来实现，其中前两种会利用索引信息。
 
 1. loose index scan实现：仅通过索引信息即可扫描出结果，且不必详细比对所有索引，仅判断部分索引值便可得出结果。extra会出现using index for group-by
 2. tigh index scan实现：仅凭索引扫描出结果分组，但缺少比对信息，需要查询出相应数据与where比对后过滤输出。
 3. 建立临时表：全表扫描，建立临时表分组。extra会出现Using temporary。
+
 ### 子查询优化
+
 对于子查询mysql根据不同情况采用不同策略进行优化。  
 对于IN的情况：Semijoin，Materialization，EXISTS strategy
 对于NOT IN的情况：Materialization, EXISTS strategy
