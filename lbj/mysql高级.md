@@ -57,8 +57,8 @@ binlog主要包含描述数据库数据更改的statement,如表创建修改，�
 purge binary logs例子：
 
 ```
-purge binary logs to 'mysql-bin.010';				      //指定清除文件
-purge binary logs before '2019-04-02 22:46:26';	      //根据日期来进行清除
+purge binary logs to 'mysql-bin.010';                //指定清除文件
+purge binary logs before '2019-04-02 22:46:26';      //根据日期来进行清除
 ```
 
 对于before后面的datetime参数需保证'YYYY-MM-DD hh:mm:ss'的format。当副本正在进行复制时，此语句也可以安全运行，不需要额外阻止它。当活动副本正在读取尝试删除的日志文件之一，此语句不会删除正在使用的日志或该日志文件之后的日志文件，但会删除之前交早的日志文件。但如果副本读取时，碰巧已经删除了它未读取的日志文件，则该副本无法进行复制操作。
