@@ -215,21 +215,28 @@ mysqlimport --fields-terminated-by=,.... db1 t1.txt      //如果使用了其他
 常用的检查log的指令:
 
 ```
-show bianry logs;							//查看现有的bin log文件（虽然可以直接在data目录查看）
-show master status;							//查看现在master数据库的状态，可以确定当前binary log文件名
-mysqlbinlog binlog_files | mysql -u root -p		//直接将binlog输入mysql，倒入
-mysqlbinlog binlog_files > tmpfile				//将log文件输出到文件中，并进行编辑
-mysql -u root -p <tmpfile					//再将编辑过的数据导入
-mysql binlog.01 binlog.02 | mysql -u root -p	//加载多个binlog应放在一起使用，如果分开使用将导致如第一个文件创建了临时表读完文件后就删除了，而读第二个文件却又依赖第一个表的问题。
+show bianry logs;                //查看现有的bin log文件（虽然可以直接在data目录查看）
+show master status;              //查看现在master数据库的状态，可以确定当前binary log文件名
+mysqlbinlog binlog_files | mysql -u root -p  //直接将binlog输入mysql，倒入
+mysqlbinlog binlog_files > tmpfile           //将log文件输出到文件中，并进行编辑
+mysql -u root -p <tmpfile                    //再将编辑过的数据导入
+mysqlbinlog binlog.01 binlog.02 | mysql -u root -p   //加载多个binlog应放在一起使用，如果分开使用将导致如第一个文件创建了临时表读完文件后就删除了，而读第二个文件却又依赖第一个表的问题。
+
+mysqlbinlog binlog.000001 >  /tmp/statements.sql
+mysqlbinlog binlog.000002 >> /tmp/statements.sql
+mysql -u root -p -e "source /tmp/statements.sql"    //或者像这样，将文件转换成一个sql文件然后处理。
 ```
 
-#### 使用事件位置的时间点恢复
+#### [使用事件位置的时间点恢复](https://dev.mysql.com/doc/refman/5.7/en/point-in-time-recovery-positions.html)
 
 ```
 --start-datetime="2020-05-27 12:00:00"
---stop-datetime="2020-05-27 12:00:00"		//使用上述参数去过滤时间范围的log
+--stop-datetime="2020-05-27 12:00:00"   
+使用mysqlbinlog加上述参数去查看时间范围内的数据，同时使用grep -C筛选想要的数据，最后确定position行。
+
 --start-position=1006
---stop-position=1868						//不建议使用datetime去输出log，因为这样会有遗漏的风险，常用datetime过滤范围，根据具体的内容找到相应postion进行输出。输出格式同上，只需要加上后缀即可。
+--stop-position=1868                    
+输入使用增量日志例子:mysqlbinlog --start-position=1985 bin.123456| mysql -u root -p
 ```
 
 ### 备份恢复的逻辑
@@ -384,17 +391,17 @@ innoDB通过将每个二级索引附加主键列来拓展二级索引，即将�
 
 一般默认情况是可重复读，但对于大批量数据报告，对数据的精度和重复性要求低于锁的开销，建议使用低级别的读已提交和读未提交的隔离级别。而串行化则一般用于XA事务，或者定位并发和死锁问题。
 
-* 读未提交:类似于读已提交的无锁版本，纯快照mvcc控制。
-* 读已提交:每次select读都是最新快照。
-* 可重复读:为了确保可重复性，在select时只读取第一次的快照。其他与读已提交差距参考锁章节即可或者[官网](https://dev.mysql.com/doc/refman/5.7/en/innodb-transaction-isolation-levels.html)。
+* 读未提交:锁的使用类似读已提交，select读取是最新的快照。
+* 读已提交:每次select读都是已提交的最新快照。
+* 可重复读:为了确保可重复性，每次select时只读取第一次的快照，不会受先开启事务但查看前修改的会话影响(除非自己修改)。其他与读已提交差距参考锁章节即可或者[官网](https://dev.mysql.com/doc/refman/5.7/en/innodb-transaction-isolation-levels.html)。
 * 串行读:类似于可重复读，但是隐式将所有的简单select语句转化成in share mode。如果自动提交开启，则为每个select都生成一个事务。
 
 ## InnoDB的锁
 
 * 共享(s)和独占锁(x):也就是读写锁，持有读锁的可以共享，读写，写写互斥。
-* 意向锁:意向锁是表级锁(mysql支持多粒度的锁，如表锁和行锁)，表明该事务随后将在该表的哪一行使用共享锁(is)或独占锁(ix)(意思是设置或者说比较时是表锁，用起来是行锁？)，意向锁的主要目的就是用作行锁，或者表明某人将要使用行锁。如`lock tables ... write`将对表设置x，`select ... lock in share mode`将对表设置is,而`select ... for update`将设置ix。表级锁的兼容性如下：![兼容性](https://dev.mysql.com/doc/refman/5.7/en/innodb-locking.html)
-* 记录锁:记录锁用于利用索引锁住所有相关修改，如`SELECT c1 FROM t WHERE c1 = 10 FOR UPDATE`将阻止t.c1=10的所有行insert,delete和update。不匹配行的记录锁将会在mysql评估完where条件后释放，for update语句将会给出最新已提交版本(半一致性读),以保证where的条件能正确筛选更新。(上述两点均只发生在读已提交隔离级别，对于第二点，在获取最新commited值后如果确实要更新就必须去获取锁了。)所以行锁在InnoDB中其实是基于索引实现的，当扫描到该表的索引，将会对该索引设置锁，所以一旦某个加锁操作没有使用索引，那么该锁就会退化为表锁。
-* 间隙锁:用来锁住一段范围的索引记录防止插入，如`SELECT c1 FROM t WHERE c1 BETWEEN 10 and 20 FOR UPDATE`将会锁住10-20的范围，阻止15的插入无论是否已经存在了该值。间隙锁可以跨越单个索引，多个索引甚至是空(指不存在的值)，是并发性和性能之间的折中。间隙锁对唯一索引的唯一值匹配是不生效的，只会对非唯一索引和没有索引的等值匹配锁住前面的间隙。不同事务的间隙锁是允许重叠的，如果删除索引的记录发生，则两个间隙锁的范围将会被合并(取消被两个事务中较晚的那个？)。因为间隙锁是单纯的抑制类锁，重叠后造成的效果是一致的。当然，可以通过使用读已提交的隔离级别和开启`innodb_locks_unsafe_for_binlog`配置，使间隙锁仅仅在外键约束和重复检查这两个地方生效。
+* 意向锁:意向锁是表级锁(mysql支持多粒度的锁，如表锁和行锁)，表明该事务随后将在该表的哪一行使用共享锁(is)或独占锁(ix)(意思是设置或者说比较时是表锁，用起来是行锁？)，意向锁的主要目的就是用作行锁，或者表明某人将要使用行锁。如`lock tables ... write`将对表设置x，`select ... lock in share mode`将对表设置is,而`select ... for update`将设置ix。表级锁的兼容性如下：![兼容性](https://dev.mysql.com/doc/refman/8.0/en/innodb-locking.html)
+* 记录锁:记录锁用于利用索引锁住所有相关修改，如`SELECT c1 FROM t WHERE c1 = 10 FOR UPDATE`将阻止t.c1=10的所有行insert,delete和update。不匹配行的记录锁将会在mysql评估完where条件后释放，for update语句如果遇见已经加锁的情况，将会给出最新已提交版本(半一致性读),以保证where的条件能正确筛选更新。(上述两点均只发生在读已提交隔离级别，对于第二点，在获取最新commited值后如果确实要更新就必须去获取锁了。)所以行锁在InnoDB中其实是基于索引实现的，当扫描到该表的索引，将会对该索引设置锁，所以一旦某个加锁操作没有使用索引，那么该锁就会退化为表锁。
+* 间隙锁:用来锁住一段范围的索引记录防止插入，如`SELECT c1 FROM t WHERE c1 BETWEEN 10 and 20 FOR UPDATE`将会锁住10-20的范围，阻止15的插入无论是否已经存在了该值。间隙锁可以跨越单个索引，多个索引甚至是空(指不存在的值)，是并发性和性能之间的折中。间隙锁对唯一索引的唯一值匹配是不生效的，只会对非唯一索引和没有索引的等值匹配锁住前面的间隙。不同事务的间隙锁是允许重叠的，如果删除索引的记录发生，则两个间隙锁的范围将会被合并(取消被两个事务中较晚的那个？)。因为间隙锁是单纯的抑制类锁，重叠后造成的效果是一致的。当然，可以通过使用读已提交的隔离级别和开启`innodb_locks_unsafe_for_binlog`配置，使间隙锁仅仅在外键约束和重复检查这两个地方生效。对于读已提交隔离级别，间隙锁相关锁是不被启用的。
 * Next-Key锁:next-key锁是记录锁和索引上间隙的组合，其实就是间隙行锁的具体实现。
 * 插入意向锁:插入意向锁主要是用于等待独占锁或共享锁时，提前预定插入，让多个插入动作在获得插入独占锁之前可以合并插入意向锁避免插入的意向锁导致插入串行。(在完成间隙锁的锁定后，锁定范围内就不会有新插入的值了，这样不会出现幻读。)
 * [自增锁](https://dev.mysql.com/doc/refman/5.7/en/innodb-auto-increment-handling.html):自增锁是特殊的表锁，对于性能和并发性需要根据算法来均衡。
@@ -420,7 +427,7 @@ InnoDB的MVCC在对待聚簇索引和二级索引是有区别的，聚簇索引�
 
 ## 非锁一致性读
 
-非锁的一致性读意味着InnoDB使用多版本并发控制去读数据库在某时刻的快照。所谓一致性读，就是该查询只能看见在本事务开始时间点之前提交的事务，不能看见之后的或未提交的事务更改。但这个规则的例外就是，同一个事务的查询能否看见自己之前的修改。这个意外对应一种异常情况，即本事务之前修改过一个行，但由于这个行没有提交，从规则上来讲应该看不见自己的修改。如果有其他会话同时也修改了该行，你甚至有可能会看见表中数据处于一种在数据库中从没有存在过的状态。
+非锁的一致性读意味着InnoDB使用多版本并发控制去读数据库在某时刻的快照。所谓一致性读，就是该查询只能看见在本事务开始时间点之前提交的事务，不能看见之后的或未提交的事务更改。但这个规则的例外就是，同一个事务的查询能否看见自己之前的修改。这个意外对应一种异常情况，即本事务之前修改过一个行，但由于这个行没有提交，从规则上来讲应该看不见自己的修改。如果有其他会话同时也修改了该行，你甚至有可能会看见表中数据处于一种在数据库中从没有存在过的状态。(A事务查看r1->B事务查看r1->B事务更新r1+1->A事务更新r1+2->A事务提交->B事务查看r1状态?)
 
 如果事务是默认的隔离级别--可重复读，所有的一致性读将会读在本事务第一次快照读建立时的值。如果需要读取更新的快照，需要结束本事务然后开启新的查询。而如果是读已提交的隔离级别，则会读取该数据最新的快照。(实际上学到这，应该就能明白依赖快照纯mvcc并不能完全解决并发性问题，还是得依赖锁之类的工具去解决。举个例子，两个事务并行执行先查库存大于1，然后减1的情况。如果两个事务同时查到还剩最后一个，然后同时减一，mvcc并不能阻止bug的产生。)一致性读是读已提交和可重复读隔离级别的默认读取模式，但如果是select ... for update则将被mysql认为是DML，一致性读失效。在mysql中，DML如update,delete,insert等语句一致性读是失效,取而代之的是使用加锁来处理，如下例子：
 
@@ -460,7 +467,7 @@ SELECT COUNT(c2) FROM t1 WHERE c2 = 'cba';
 
 ## 幻读
 
-## undo log
+## [undo log](http://mysql.taobao.org/monthly/2015/04/01/)
 
 一份undo log日志是由单个读写事务的undo log记录集合组成。其中undo log记录包含了如何撤销上个事务的更改对聚簇索引记录的更改。undo log存储在全局临时表空间(临时表空间存储InnoDB非压缩的临时表和相关对象，在MYSQL5.7版本被引入。可以通过`innodb_temp_data_file_path`配置临时表的路径，name等临时表空间相关属性。如果该项配置未配置，则会创建一个12mb的自拓展名为ibtmp1的文件，在data目录。临时表空间文件在mysql启动时被创建--如未创建成功则无法启动，关闭或退出时被删除，如果是崩溃退出则不会被删除，可手动删除或mysql保持相同配置重启时重建。)中，他们不会被redo-logged，因为他们不需要在崩溃时进行回复工作。
 
@@ -505,7 +512,7 @@ InnoDB像大多数服从ACID的数据库一样，刷新redolog在事务committed
 
 ## mysql物理结构
 
-![mysql架构](https://dev.mysql.com/doc/refman/5.7/en/images/innodb-architecture.png)
+![mysql架构](https://dev.mysql.com/doc/refman/8.0/en/images/innodb-architecture.png)
 
 * 聚簇索引:innoDB存储引擎存储的表都是有聚簇索引的，一般为主键，如果没有主键则寻找合适的非空unique索引，如果还是没有则生成包含行id值的合成列作为隐藏聚簇索引，长度为6字节。  
 * 二级索引:聚簇索引外的称之为二级索引，当聚簇索引建立后，所有二级索引的叶子结点都为聚簇索引的key。所以如果索引列(主键也一样)很长，索引就会占用更多的空间，同时意味着更多的I/O，对查询也是不利的。  
@@ -551,6 +558,10 @@ buffer chunks是最底层的物理块，由两部分组成:1.控制体和与其�
 ### Buffer Pool预热
 
 MYSQL在重启时缓冲池没有什么数据，需要业务对数据库进行数据操作才能慢慢填充。所以在初期MySQL的性能不会特别好，特别Buffer Pool越大预热过程越长。为了缩短预热过程，可以把之前Buffer Pool中的页面数据存储到磁盘，等MySQL启动时直接加载磁盘数据即可。其中dump过程就是将数据页按space_id,page_no组成64位数字，写到外部文件中。
+
+## change buffer
+
+change buffer主要用于管理不在buffer pool的二级索引相关的更改。主要二级索引不像聚簇索引一样插入相对集中且是非唯一的，修改二级索引相关页内容将会导致大量随机I/O影响性能，所以需要集中缓存二级索引相关修改然后随后合并多次修改再写入磁盘中。change buffer的合并写入可能会持续几个小时，此时将会明显影响磁盘相关查询的I/O。当mysql关闭时，内存中的change buffer内容将会存入磁盘上系统表空间中的change buffer空间。
 
 ## [optimizer_trace](https://www.imooc.com/article/308721)
 
