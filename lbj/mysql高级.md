@@ -399,7 +399,15 @@ innoDB通过将每个二级索引附加主键列来拓展二级索引，即将�
 ## InnoDB的锁
 
 * 共享(s)和独占锁(x):也就是读写锁，持有读锁的可以共享，读写，写写互斥。
-* 意向锁:意向锁是表级锁(mysql支持多粒度的锁，如表锁和行锁)，表明该事务随后将在该表的哪一行使用共享锁(is)或独占锁(ix)(意思是设置或者说比较时是表锁，用起来是行锁？)，意向锁的主要目的就是用作行锁，或者表明某人将要使用行锁。如`lock tables ... write`将对表设置x，`select ... lock in share mode`将对表设置is,而`select ... for update`将设置ix。表级锁的兼容性如下：![兼容性](https://dev.mysql.com/doc/refman/8.0/en/innodb-locking.html)
+* 意向锁:意向锁是表级锁(mysql支持多粒度的锁，如表锁和行锁)，表明该事务随后将在该表的哪一行使用共享锁(is)或独占锁(ix)(意思是设置或者说比较时是表锁，用起来是行锁？)，意向锁的主要目的就是用作行锁，或者表明某人将要使用行锁。如`lock tables ... write`将对表设置x，`select ... lock in share mode`将对表设置is,而`select ... for update`将设置ix。表级锁的兼容性如下：
+
+||X|IX|S|IS|
+|----|----|----|----|----|
+|X|Conflict|Conflict|Conflict|Conflict|
+|IX|Conflict|Compatible|Conflict|Compatible|
+|S|Conflict|Conflict|Compatible|Compatible|
+|IS|Conflict|Compatible|Compatible|Compatible|
+
 * 记录锁:记录锁用于利用索引锁住所有相关修改，如`SELECT c1 FROM t WHERE c1 = 10 FOR UPDATE`将阻止t.c1=10的所有行insert,delete和update。不匹配行的记录锁将会在mysql评估完where条件后释放，for update语句如果遇见已经加锁的情况，将会给出最新已提交版本(半一致性读),以保证where的条件能正确筛选更新。(上述两点均只发生在读已提交隔离级别，对于第二点，在获取最新commited值后如果确实要更新就必须去获取锁了。)所以行锁在InnoDB中其实是基于索引实现的，当扫描到该表的索引，将会对该索引设置锁，所以一旦某个加锁操作没有使用索引，那么该锁就会退化为表锁。
 * 间隙锁:用来锁住一段范围的索引记录防止插入，如`SELECT c1 FROM t WHERE c1 BETWEEN 10 and 20 FOR UPDATE`将会锁住10-20的范围，阻止15的插入无论是否已经存在了该值。间隙锁可以跨越单个索引，多个索引甚至是空(指不存在的值)，是并发性和性能之间的折中。间隙锁对唯一索引的唯一值匹配是不生效的，只会对非唯一索引和没有索引的等值匹配锁住前面的间隙。不同事务的间隙锁是允许重叠的，如果删除索引的记录发生，则两个间隙锁的范围将会被合并(取消被两个事务中较晚的那个？)。因为间隙锁是单纯的抑制类锁，重叠后造成的效果是一致的。当然，可以通过使用读已提交的隔离级别和开启`innodb_locks_unsafe_for_binlog`配置，使间隙锁仅仅在外键约束和重复检查这两个地方生效。对于读已提交隔离级别，间隙锁相关锁是不被启用的。
 * Next-Key锁:next-key锁是记录锁和索引上间隙的组合，其实就是间隙行锁的具体实现。
