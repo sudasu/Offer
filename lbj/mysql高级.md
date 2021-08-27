@@ -475,12 +475,6 @@ SELECT COUNT(c2) FROM t1 WHERE c2 = 'cba';
 * 对于查询是否存在然后再更改删除的操作，建议使用`lock in share mode`读锁锁住不让其他事务同时操作(for update也行，如果要更改确实必须互斥锁，但是一开始就使用代价相比较大)，然后再执行。
 * 对于排号计数的查询，不应该使用一致性读或者共享读，这样会导致有可能两个人的号是一样的。而且如果先使用共享锁，再尝试更新时有可能会导致死锁，(由于二阶段锁协议，只有在事务commit时才释放锁，所以会拿了读锁后继续拿写锁。)所以建议直接使用for update直接拿排他锁。(或者使用last_insert_id()函数，细节以后再看)
 
-## 死锁
-
-### 处理死锁
-
-死锁状态确认:`show engine innodb status`;SHOW ENGINE INNODB STATUS 和 InnoDB monitor都是监控InnoDB状态的手段，需要熟练使用。
-
 ## 幻读
 
 ## [undo log](http://mysql.taobao.org/monthly/2015/04/01/)
@@ -525,6 +519,22 @@ redolog在磁盘上的物理表示为ib_logfile0和ib_logfile1两个文件,mysql
 ### redo log的组提交刷新
 
 InnoDB像大多数服从ACID的数据库一样，刷新redolog在事务committed之前。但为了提高吞吐量，InnoDB避免每次commit就刷新日志，而是将同时刻的多个事务一起commit。
+
+## 死锁
+
+### 死锁的预防
+
+1. 尽量使用事务的行锁而不是表锁。
+2. 操作数据库表数据时，尽量按照统一的顺序。
+3. 尽量对索引使用行锁，不然会退化成表锁。
+4. 事务尽量的小，且快速提交
+5. 由于两阶段锁，所以读锁升级写锁很容易造成死锁。
+
+### 处理死锁
+
+mysql自动检测死锁，如果产生了死锁，mysql将会选择代价相对较低的事务进行回滚，事务的代价是根据insert,update,delelte行数决定的。当然通过`innodb_lock_wait_timeout`设置超时回滚，处理死锁有时可能更有效，当由于死锁等待的事务过多时。
+
+死锁状态确认:`show engine innodb status`;SHOW ENGINE INNODB STATUS 和 InnoDB monitor都是监控InnoDB状态的手段，需要熟练使用。
 
 ## mysql物理结构
 
