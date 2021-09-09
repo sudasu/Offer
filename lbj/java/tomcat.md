@@ -23,7 +23,6 @@ Tomcat 10以及以后的版本遵循Jakarta EE规范开发，而Tomcat 9及之�
 ```
 CATALINA_HOME:配置多实例的公用文件目录，一般为bin,lib,可以通过升级公用文件目录的内容实现tomcat升级。其中bin目录里面的tomcat-juli.jar建议不要修改，如果想自己替换日志系统，建议替换BASE里的jar。
 CATALINA_BASE:配置每个实例的私有文件目录，一般为conf,work,logs,temp,webapps等,可以启动多个独立实例。以上目录都是默认有的，没有会自动创建但是conf目录必须有server.xml和web.xml配置文件，否则会启动失败。如果bin和lib都有的话，先读base再读home(如果只有一个实例则HOME，BASE一致)
-CATALINA_TMPDIR:
 ```
 
 运行时动态修改目录地址:
@@ -42,6 +41,8 @@ Windows: CATALINA_BASE=C:\tomcat_base1 catalina.bat start
 ```
 
 ## 类加载器
+
+tomcat提供多种类加载器，以实现容器的不同部分和多个不同web应用运行在一个容器里面。
 
 ### Bootstrap
 
