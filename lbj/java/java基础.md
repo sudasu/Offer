@@ -1,12 +1,59 @@
 # [java](https://docs.oracle.com/en/java/index.html)([java8](https://docs.oracle.com/javase/8/))
 
-## [java规范引用](https://docs.oracle.com/javase/specs/jls/se8/html/index.html)
+## [java语言与虚拟机规范](https://docs.oracle.com/javase/specs/index.html)
 
-## [java specification](https://docs.oracle.com/javase/specs/index.html)
+### [java8 语言规范](https://docs.oracle.com/javase/specs/jls/se8/html/index.html)
 
-## classloader
+### [java8 虚拟机规范](https://docs.oracle.com/javase/specs/jvms/se8/html/index.html)
 
-类加载流程:加载->连接(验证->准备->解析)->初始化。可以通过使用classLoader的loadClass来显示加载类，也可以使用new或者调用该类的静态方法来隐式加载，new的实现流程暂不清楚，但是可以清楚classLoader不会立即解析而隐式加载会。根据猜测，每个类会引用自己的类加载器，那么这个类在调用加载其他类信息是隐式加载是采用自己的类加载器？根据双亲委派机制，子加载器加载的类对于父加载器是可见的，此设计应该是在findLoadedClass时直接将子加载器加载的类返回。
+## package
+
+## 类加载
+
+### 概述
+
+java虚拟机通过加载某个指定类，并调用该类的main方法来启动的，类加载流程主要还是由:`加载->连接(验证->准备->解析)->初始化`三个步骤构成。
+
+### 加载
+
+所谓加载就是指通过特定的名称找到二进制表示的class或者interface，并据此构造一个二进制的class对象表示该class或interface。二进制文件的生成，一般情况是通过Java编译器提前编译源码转换成二进制文件，但也可以动态计算转换。其中class file的格式由jvm定义，但是也可以通过类加载器的defineClass方法使用其他格式的二进制文件构造。
+
+好的加载器需要注意两点：1.对于相同的名称，类加载器应该只返回相同的类对象。2.对于L1委托L2加载的情况，在任何返回类对象的场景，L1和L2应该返回相同得到类对象。(当然如果这些原则被不好的类加载器打破了，虚拟机会保证类型安全系统不被破坏。)
+
+不同的类加载器采用不同的加载策略，有些性能优化的选择，比如组加载和预测预加载。但是在使用这些选择时，有些错误可能无法被立刻探测到，比如老的类对象在缓存而实际该对象已经被删了应该抛出classNotFound的错误。类加载错误抛出的error为LinkageError的子类，ClassCircularityError(自己是自己的父类)，ClassFormatError(格式不符合要求)，NoClassDefFoundError(类信息未找到)。
+
+### 连接
+
+连接就是将一个二进制格式的类或结构转换成jvm中的运行时可以使用的状态。为了连接时的灵活性(如遇见递归加载的情况)，在遵循java语言的规范---(1.初始化前类或接口必须被完全验证和准备2.在连接期间检测到的程序需要连接包含错误的类和接口时，抛出相关错误。)的情况下，选择懒解析的方式对单独正在被使用的符号引用进行解析。
+
+#### 验证
+
+验证是为了保证加载的二进制类信息文件结构正确。一般包括是否每行指令都有相应的操作代码，跳转指令是否正确跳转至指令的开始部分，所有指令是否遵循jvm的类型规则，每个方法是否都结构正确。在验证错误发生时，会抛出LinkageError的子类，VerifyError。
+
+#### 准备
+
+为class的静态变量，常量分配内存空间设置初始化值，其中常量此时赋值。为了使后面的操作更加高效，jvm此时也做了些额外的操作，如维护一个方法表以保证该类实例被调用时避免去父类搜索。(是相当于自己维护一个方法表，将父类的方法引用放入？)
+
+#### 解析
+
+二进制表示的class或者interface通过二进制名称符号引用他们的属性，方法，构造。为了验证引用正确性以及后续重复使用的高效，需要对其进行解析转换成直接引用。解析过程会抛出IncompatibleClassChangeError(LinkageErro子类)或其子类Error，如：
+
+* IllegalAccessError：不合规范的访问被private,protected等修饰的变量。(这发生在引用public字段编译成功后，被引用类对该字段进行了修改。)
+* InstantiationError：实例化的abstract修饰的类，同样可能发生在编译成功后的被引用类修改。
+* NoSuchFieldError：不存在该字段，错误发生同上。
+* NoSuchMethodError：不存在该方法，错误发生同上。
+
+除此之外LinkageError的子类UnsatisfiedLinkError，发生在native方法找不到实现时抛出。
+
+### 初始化
+
+初始化一般就是对静态变量进行赋值，以及对static代码段进行执行。
+
+### 双亲委派
+
+双亲委派，向上可以保证共享已加载的类信息，向下可以保证同全限定名不同类加载器的隔离，避免冲突。
+
+可以通过使用classLoader的loadClass来显式加载类，也可以使用new或者调用该类的静态方法来隐式加载，new的实现流程暂不清楚，但是可以清楚classLoader不会立即解析而隐式加载会。根据猜测，每个类会引用自己的类加载器，那么这个类在调用加载其他类信息是隐式加载是采用自己的类加载器？根据双亲委派机制，子加载器加载的类对于父加载器是可见的，此设计应该是在findLoadedClass时直接将子加载器加载的类返回。
 
 ### getClassLoader()
 
