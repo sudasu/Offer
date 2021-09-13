@@ -1,26 +1,33 @@
 # mac指令
+
 ## 环境变量配置
+
 ### /etc/profile全局环境变量失效
+
 macOS Cataalina(10.15)后默认终端从bash变成了zsh，可输入`cho $SHELL`查看。执行完`source /etc/profile`指令后新建终端环境变量失效的解决方案：
 
-*  执行<code>vim ~/.zshrc</code>指令
-*  在.zshrc文件最后添加:<code>source /etc/profile</code>
-*  最后执行<code>source ~/.zshrc</code>
+* 执行`vim ~/.zshrc`指令
+* 在.zshrc文件最后添加:`source /etc/profile`
+* 最后执行`source ~/.zshrc`
 
 ### 配置环境变量
 
-* 输入<code>vim ~/.zshrc</code>进入.zshrc文件
+* 输入`vim ~/.zshrc`进入.zshrc文件
 * 添加如export GOPATH = "/Users/lbj/go"(保留多项如export PATH = $PATH:$GOPATH:..)
-* 最后<code>source ~/.zshrc</code>立即生效
+* 最后`source ~/.zshrc`立即生效
 
 ### 当前窗口环境变量
+
 `.bash_profile` 中修改环境变量只对当前窗口有效，而且需要`source ~/.bash_profile`才能使用，`.zshrc`则相当于开机启动的环境变量。
+
 ### 全局变量需要注意的
+
 1. 修改全局变量，需要修改/etc/profile文件
 2. 修改profile文件需要sudo权限
 3. 由于文件只读，需要q!或wq!强制退出
 
 ## shell alias别名设置
+
 some more ls aliases
 
 ```
@@ -30,13 +37,18 @@ alias l='ls -CF'
 ```
 
 ## 修改hosts文件
-<code>vi /etc/hosts</code>
+
+`vi /etc/hosts`
+
 ## 文件权限
+
 chmod [参数] [ugoa(文件所有者，所有者所在组，其他用户，所有用户)][+-=(添加，删除，覆盖)][rwx(读，写，执行)]
 常用参数：  
 -v   //显示权限变更的详细资料  
 -R  //对当前目录及子目录进行相同的权限操作
+
 ## 删除
+
 删除指令：`rm -rf /etc/...`，一般删除文件-f，-r表示向下递归
 ## 查找
 find path [-name|-type] filename			//注意如果想使用匹配记得加""
