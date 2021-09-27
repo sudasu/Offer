@@ -2,7 +2,27 @@
 
 ## 类文件格式
 
-### classFile结构
+## classFile结构
+
+### attrubute表
+
+BootstrapMethods:
+
+```
+BootstrapMethods_attribute {
+    u2 attribute_name_index;
+    u4 attribute_length;
+    u2 num_bootstrap_methods;
+    {   u2 bootstrap_method_ref;
+        u2 num_bootstrap_arguments;
+        u2 bootstrap_arguments[num_bootstrap_arguments];
+    } bootstrap_methods[num_bootstrap_methods];
+}
+```
+
+引用关系:
+
+![引用关系](../asset/20140806095516610.png)
 
 ## 运行时数据区域
 
@@ -35,11 +55,15 @@ cp_info{
 tag type:1.Utf8(用来表示二进制类或接口名),3.Integer,4.Float,5.Long,6.Double,7.class,8.String,9.Fieldref,10.Methodref,11.InterfaceMethodref,12.NameAndType,15.MethodHandle,16.MethodType,18.InvokeDynamic。
 ```
 
+`CONSTANT_NameAndType_info`:用作描述无关类或接口信息的字段或方法，其中info包含`name_index`(由`CONSTANT_Utf8_info`结构表示字段或方法名字，通常为[有效非限定名](https://docs.oracle.com/javase/specs/jvms/se7/html/jvms-4.html#jvms-4.2.2)或者`<init>`特殊名字。)和`descriptor_index`(由`CONSTANT_Utf8_info`结构表示字段或方法的描述符)组成。
+
+`CONSTANT_InvokeDynamic_info`:为indy指令指定启动方法，info包括`bootstrap_method_attr_index`和`name_and_type_index`。
+
 ## 类加载
 
 ### 概述
 
-jvm是动态的加载，连接，初始化类和接口，此处主要介绍了：1.如何从二进制形式的类或接口获取符号引用。2.解释加载，连接，初始化在jvm里第一次初始化的过程。3.定义二进制形式的类或接口是如何被加载然后创建的。4.详细阐述类或接口连接，初始化以及退出过程和本地方法的binding。
+java虚拟机的启动，通过使用bootstrap class loader创建一个包含main方法的初始类启动。先连接该类，然后初始化，最后调用该类的main方法，由main方法的内容进一步进行后续更多的指令。jvm的类加载由的加载，连接，初始化类和接口组成，此处主要介绍了：1.如何从二进制形式的类或接口获取符号引用。2.解释加载，连接，初始化在jvm里第一次初始化的过程。3.定义二进制形式的类或接口是如何被加载然后创建的。4.详细阐述类或接口连接，初始化以及退出过程和本地方法的binding。
 
 ### 符号引用
 
