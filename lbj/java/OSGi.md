@@ -1,0 +1,3 @@
+# OSGi
+
+类加载相关，动态模块化，与java9静态模块化相区分。网状动态加载器加载而不是双亲委派的树状，由于classLoader的同步方法可能引起死锁，可通过JDK 7引入的registerAsParallelCapable来降低锁的粒度来避免。

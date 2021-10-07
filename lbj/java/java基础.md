@@ -74,3 +74,5 @@ loadClass(String name)是public方法，在调用时会调用protected方法load
 ### 载入自定义java.\*
 
 我们自己实现的java.\*包下的类是无法被类装载器所加载的，一方面是双亲委派，另一方面jvm的实现也确保了java.\*目录下的class不会被除bootstrap类加载器以外加载器加载。
+
+## 线程和锁

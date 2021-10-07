@@ -50,8 +50,6 @@ Java虚拟机自带的类加载器，用于加载基础运行时需要的类，�
 
 ### System
 
-
-
 ## Connector
 
 ### HTTP Connector
