@@ -103,4 +103,4 @@ JVM的anewarray, checkcast, getfield, getstatic, instanceof, invokedynamic, invo
 
 ## 初始化
 
-初始化一个类或接口表示执行类或接口的初始化方法。
+初始化一个类或接口表示执行类或接口的初始化方法。触发解析的方式：1.JVM执行new, getstatic, putstatic, 或invokestatic指令。执行new指令时，如果引用类未被初始化，则初始化。执行getstatic, putstatic, 或invokestatic指令时，申明了已被解析字段或方法的类或接口如果未被解析将会被解析。2.

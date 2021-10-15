@@ -76,3 +76,53 @@ loadClass(String name)是public方法，在调用时会调用protected方法load
 我们自己实现的java.\*包下的类是无法被类装载器所加载的，一方面是双亲委派，另一方面jvm的实现也确保了java.\*目录下的class不会被除bootstrap类加载器以外加载器加载。
 
 ## 线程和锁
+
+## JNDI
+
+Java Naming and Directory Interface,是java命名和目录接口。是一个应用程序设计的API，为开发人员提供查找和访问各种**命名和目录**服务的通用、统一的接口，类似JDBC都是构建在抽象层上。JNDI中的命名就是将Java对象以某个名称的形式绑定到一个容器环境中，如将数据源对象绑定到JNDI环境中，后续的Servlet程序就可以直接从JNDI环境中查询出这个对象进行使用。容器环境本身也是一个Java对象，容器环境可以绑定到另一个Context对象中，形成树级结构。命名与目录两者之间的关键差别是目录服务中对象不但可以有名称还可以有属性（例如，用户有email地址），而命名服务中对象没有属性。
+
+### Context
+
+Context由一系列 name-to-object bindings组成，核心功能为查询，绑定，解绑，重命名对象，以及创建和销毁子环境。
+
+### Names
+
+每一个在Context接口中的Nameing相关方法，通常都有两种重载的实现，参数分别为Name类型和string类型。Naming对象对应用来说提供了许多方便操作，包括组合修改name，比较name组成部分等。
+
+### Binding
+
+Binding类表示一个name-to-object对象，是一个包含绑定对象的name,class name,以及自己本身的元组。Binding类是NameClassPair类的子类，NameClassPair类描述对象和对象类信息。
+
+### References
+
+对象以不同的方式存储在naming and directory services里面，比如如果支持存储对象的话就可以以序列化的方式进行存储。但是，有些服务可能是不支持这种方式的，毕竟对于目录中的对象java程序也仅仅是访问该服务的一类程序。JNDI定义了reference,用来表示如果构造该对象副本的信息。JNDI将会尝试将从directory查询出的引用转换成Java对象，以至于使JNDI的客户端认为存储在目录中的是java object。
+
+### Initial Context
+
+在JNDI中，所有的naming and directory操作都是基于相对上下文环境所执行的，没有一个明确的root。因此，JNDI定义了一个初始环境--InitialContext,作为naming and directory操作的起点。
+
+### Directory Context
+
+该环境定义了检查和更新directory object或directroy enty属性的方法，主要用作提供dierctory services。Directroy Context实现了Context接口，同时也可以提供naming services。
+
+### Naming Event
+
+该Event用于反映在naming/directory服务中产生的事件，由Context和DirContext的子接口EventDirContext定义。NamingEvent代表的事件触发有两种类型：1.namespace相关的影响(add/remove/rename一个对象)。2.对象类容的修改。每类事件的处理由相应的监听器来维护：NamespaceChangeListener,ObjectChangeListener。代码例子：
+
+```
+EventContext src = 
+    (EventContext)(new InitialContext()).lookup("o=wiz,c=us");
+src.addNamingListener("ou=users", EventContext.ONELEVEL_SCOPE,
+    new ChangeHandler());
+...
+class ChangeHandler implements ObjectChangeListener {
+    public void objectChanged(NamingEvent evt) {
+        System.out.println(evt.getNewBinding());
+    }
+    public void namingExceptionThrown(NamingExceptionEvent evt) {
+        System.out.println(evt.getException());
+    }
+}
+```
+
+注意：context相关操作需要保证自己保证线程安全，如为环境增加监听器。
