@@ -126,3 +126,9 @@ class ChangeHandler implements ObjectChangeListener {
 ```
 
 注意：context相关操作需要保证自己保证线程安全，如为环境增加监听器。
+
+## NIO
+
+### ByteBuffer
+
+java NIO引入了三种类型的ByteBuffer：1.HeapByteBuffer，通过ByteBuffer.allocate方法创建，分配JVM堆空间，可以获得GC支持，缓存优化。但是由于不是页面对齐的，所以如果需要通过JNI与本地代码进行交互，JVM会复制到对齐的缓冲区空间。2.DirectByteBuffer，通过ByteBuffer,allocateDirect方法创建，分配JVM外的堆外空间。由于不是JVM管理的，所以内存空间是页面对齐的不受GC影响，是处理本地代码的最好选择，但是必须自己管理这块内存防止内存泄漏。3.MappedByteBuffer，通过FileChannel.map创建，也是不受JVM管理的堆外空间，但不同的是作为OS mmap系统调用的包装。
