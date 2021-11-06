@@ -132,3 +132,42 @@ class ChangeHandler implements ObjectChangeListener {
 ### ByteBuffer
 
 java NIO引入了三种类型的ByteBuffer：1.HeapByteBuffer，通过ByteBuffer.allocate方法创建，分配JVM堆空间，可以获得GC支持，缓存优化。但是由于不是页面对齐的，所以如果需要通过JNI与本地代码进行交互，JVM会复制到对齐的缓冲区空间。2.DirectByteBuffer，通过ByteBuffer,allocateDirect方法创建，分配JVM外的堆外空间。由于不是JVM管理的，所以内存空间是页面对齐的不受GC影响，是处理本地代码的最好选择，但是必须自己管理这块内存防止内存泄漏。3.MappedByteBuffer，通过FileChannel.map创建，也是不受JVM管理的堆外空间，但不同的是作为OS mmap系统调用的包装。
+
+## Stream
+
+### 常用方法
+
+```java
+
+//流的转换操作api
+
+Stream<T> filter(Predicate<? super T> predicates)                                    //例(w->w.length()<10)，用于筛选满足条件的结果，其中Predicate指返回bool的Function
+
+<R> Stream<R> map(Function<? super T,? extends R> mapper)                            //例(String::toLowerCase);(s->s.substring(0,1)),其中T为入参，R为回参，用于对流中的每个元素都进行操作。
+
+<R> Stream<R> map(Function<? super T,? extends Stream<? extends R>> mapper)          //与上的区别在于对返回的参数做了限制，即返回的是流，正常情况下是流的流，但该函数将会将合并成单个流。
+
+Stream<T> limit(long maxSize)                                                        //返回当前流的前maxSize个元素的流
+
+Stream<T> skip(long n)                                                               //返回跳过前n个元素的所有元素的流
+
+Stream<T> peek(Consumer<? super T> action)                                           //对当前元素进行操作，但不影响流，其中Consumer是返回值为void的Function
+
+static Stream<T> concat(Stream<? extends T> a,Stream<? extends T> b)                 //产生a流后接b流的合并流
+
+//其他筛选如distinct去重，sorted排序
+
+//流的终结操作包含 max,min,findFirst,findAny,anyMatch,allMatch,noneMatch。其中find相关操作返回是Optional对象，Optional包含了许多判空，及提供默认值等相应处理函数。
+
+
+
+optionV.f().g() => optionV.f().flatMap(T::g);
+
+<U> Optional<U> flatMap<Function<? super T,Optional<U>> mapper>                      //同一个类的某些计算或者函数转换成对Optional的封装，由于f的转换返回Optional类型或者直接就是Optional类型无法链式，所以使用flatMap封装。注意：Function的入参
+
+
+
+
+
+
+```
