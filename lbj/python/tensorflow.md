@@ -1,4 +1,6 @@
-# tensorflow https://blog.csdn.net/kangshuangzhu/article/details/106851826
+# tensorflow
+
+## deepCTR
 
 ## tfrecord
 
