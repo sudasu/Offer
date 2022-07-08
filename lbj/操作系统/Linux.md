@@ -132,3 +132,24 @@ int main(int argc, char *argv[])
 int shmget(key_t key,size_t size,int shmflg)
 //shmget返回与key相关的系统V共享内存段的标识符。新返回的共享内存端的size等同于size参数，大小必须是PAGE_SIZE的整数倍。
 ```
+
+## Linux文件，进程权限
+
+### SUID
+
+当二进制可执行文件的-l文件描述信息出现如-rws--x--x，owner部分包含s字母，则称为SUID BITS。SUID的特点如下：1.仅存在于二进制执行文件中。2.该文件在被执行时，执行者拥有文件创建者的权限。如在使用chod 755时(r=4,w=2,x=1)时，在前面加一位4，即可表明时SUID文件chod 4755，使用字母权限更改用s来替代x也是可以的。
+
+### SGID
+
+对于二进制文件在group部分包含s字母，如-rwxr-sr-x,则称为SGID，即当用户在执行该文件时拥有文件所属组的权限。当目录文件的group部分包含s字母，如drwxrwsr-x,则该目录具有如下特点:如果用户在该目录下拥有写的执行的权限，则可以创建文件，且该文件所属组统一为目录所属组。同上，使用时在ugo前+2。
+
+### SBIT
+
+表现为drwxrwxrwt，other部分变成了t，表明用户在该目录下创建的文件只有用户的拥有者和root才有权力删除。同上，使用时在ugo前+1。
+
+### 注意
+
+由于s,t代替了x位，如果在相应位置没有执行权限，则字母使用写来标示，如chmod 7666 afile 对应的则会是-rwSrwSrwT。
+
+[相关讲解](https://www.cnblogs.com/sparkdev/p/11417781.html)
+[官方capability](https://man7.org/linux/man-pages/man7/capabilities.7.html)
