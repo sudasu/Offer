@@ -151,5 +151,9 @@ int shmget(key_t key,size_t size,int shmflg)
 
 由于s,t代替了x位，如果在相应位置没有执行权限，则字母使用写来标示，如chmod 7666 afile 对应的则会是-rwSrwSrwT。
 
+### capabilities
+
+在SGID中很轻易的就将root相关权限赋予出去，从安全的角度考虑，将root权限进行精细化拆分成不同capabilities，赋予给不同的可执行文件。
+
 [相关讲解](https://www.cnblogs.com/sparkdev/p/11417781.html)
 [官方capability](https://man7.org/linux/man-pages/man7/capabilities.7.html)
