@@ -4,7 +4,7 @@
 
 ### /etc/profile全局环境变量失效
 
-macOS Cataalina(10.15)后默认终端从bash变成了zsh，可输入`cho $SHELL`查看。执行完`source /etc/profile`指令后新建终端环境变量失效的解决方案：
+macOS Cataalina(10.15)后默认终端从bash变成了zsh，可输入`echo $SHELL`查看。执行完`source /etc/profile`指令后新建终端环境变量失效的解决方案：
 
 * 执行`vim ~/.zshrc`指令
 * 在.zshrc文件最后添加:`source /etc/profile`
@@ -15,7 +15,7 @@ macOS Cataalina(10.15)后默认终端从bash变成了zsh，可输入`cho $SHELL`
 * 输入`vim ~/.zshrc`进入.zshrc文件
 * 添加如export GOPATH = "/Users/lbj/go"(保留多项如export PATH = $PATH:$GOPATH:..)
 * 最后`source ~/.zshrc`立即生效
-
+    
 ### 当前窗口环境变量
 
 `.bash_profile` 中修改环境变量只对当前窗口有效，而且需要`source ~/.bash_profile`才能使用，`.zshrc`则相当于开机启动的环境变量。
@@ -184,3 +184,8 @@ mv [options] src dest
 ```
 
 ## curl
+
+```
+//post请求带json文件
+curl -X POST -H "Content-Type:application/json" "http://127.0.0.1:6345/v2/bcut/vchange/lanch" -d@test.json 
+```
