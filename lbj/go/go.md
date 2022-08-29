@@ -353,6 +353,64 @@ func pack(in <-chan string) <-chan string {
  }()
  return out
 }
+
+```
+
+扇形模式:将多个并行执行的任务合并为一个结束通道
+
+```go
+func merge(ins ... <-chan string) <-chan string{
+  var wg sync.WaitGroup
+  out := make(chan string)
+  do := func (c <-chan string)  {
+    defer wg.Done()
+    for s := range c{
+      //do something
+      out <- s
+      ... 
+    }
+  }
+  for _, v := range ins {
+    wg.Add(1)
+    go do(v)
+  }
+  go func ()  {
+    wg.Wait()
+    close(out)
+  }()
+  return out
+} 
+```
+
+```go
+
+s1 := "ssssssss"
+s2 := "aaaaaaa"
+done := make(chan string)
+do = func (st string,cs1 <-chan string,cs2 <-chan string)  {
+  c := char[](st)
+  int i = 0;
+  for {
+    select{
+      case <-done:
+      break
+      case <-cs1:
+      if i<len(c)-1 {
+        append(c[i])
+        cs2 <- "1"
+      }else{
+        done <- "1"
+        break
+      }
+    }
+  }
+  for i<len(c)-1 {
+    append(c[i])
+  }
+}
+
+do()
+
 ```
 
 ## 指针,make,new
@@ -480,4 +538,38 @@ stringDate := "2006-02-02"
 //是utc还是cst，当使用format(format时，应该会把时区参数加上再format)
 //时都会得到正确的字符串，但time的unix值不同
 endTime, _ := time.ParseInLocation("2006-01-02", stringDate, loc) 
+
+//time.Duration虽然是int,在直接使用数字时可以不用转换，但经过计算后需要使用显式强制类型转换
+a := start.Minute() + 40
+start = start.Add(time.Duration(a) * time.Minute)
 ```
+
+```
+ticker := time.NewTicker(time.Second)
+defer tick.Stop()
+for{
+  select{
+    case t := <-ticker.C:
+      fmt.Println("Current time: ",t)
+  }
+}
+```
+
+## runtime
+
+```go
+runtime.Gosched()      //Gosched:让出当前线程cpu，进入就绪状态
+runtime.NumCPU()       //返回当前系统CPU核数
+runtime.GOMAXPROCS()   //GOMAXPROCS设置最大的可同时使用的CPU核数。
+runtime.Goexit()       //Goexit退出当前goroutine（但是defer语句会照常执行）。
+runtime.NumGoroutine() //NumGoroutine返回正在执行和排队的任务总数。
+os := runtime.GOOS     //GOOS目标操作系统。
+```
+
+## sync/atomic
+
+var v atomic.Value
+v.Store(x)
+swapped := v.CompareAndSwap(old, new)  //cas原子比较,当old值与store的值一致时才会更新
+
+## [metrics](https://zhuanlan.zhihu.com/p/390439038)

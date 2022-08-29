@@ -57,3 +57,15 @@ get filename [newname]   //获取文件,参数:-afPr.-r可以递归获取目录�
 put                      //用法与get一致
 lpwd                     //可以看本地目录，以免自己忘了
 ```
+
+## [kill信号](https://zhuanlan.zhihu.com/p/113876980)
+
+SIGKILL       kill -9    Term    Kill signal,不能捕获
+SIGTERM            15    Term    Termination signal,可以被忽略的kill信息,kill的默认缺省值
+SIGSTOP            19    Term    Stop the process,不能捕获
+SIGCONT            18    Term    continue the process
+SIGTSTP     ctrl+z/20    Term    暂停进程，可以被进程忽略
+SIGINT       ctrl+c/2    Term    程序终止(interrupt)信号终止进程，可以被进程忽略
+SIGQUIT      ctrl+\/3    Term    SIGQUIT退出时会产生core文件, 在这个意义上类似于一个程序错误信号
+SIGHUP              1    Term    用户终端连接结束时发出，可以被忽略，如wget在用户退出登陆后也能继续执行。与终端脱离关系的
+                                 守护进程，这个信号用鱼通知它重新读取配置文件
