@@ -189,3 +189,9 @@ mv [options] src dest
 //post请求带json文件
 curl -X POST -H "Content-Type:application/json" "http://127.0.0.1:6345/v2/bcut/vchange/lanch" -d@test.json 
 ```
+
+## top 
+
+进入top界面后输入P按cpu排序，输入M按内存排序  //mac无效
+
+-o cpu -O mem //主要排序cpu，次要排序mem，可以在top界面直接输入o 然后输出mem

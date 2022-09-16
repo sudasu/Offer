@@ -25,3 +25,6 @@ clickhouse-client -d database --query="SELECT * FROM [db.]tablename format CSV" 
 //进行插入工作
 cat export_tablename.csv | clickhouse-client --query="INSERT INTO [db.]tablename FORMAT CSV";
 ```
+
+
+[未处理知识](https://blog.csdn.net/liang_0609/article/details/86707845)

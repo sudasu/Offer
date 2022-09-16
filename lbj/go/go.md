@@ -572,4 +572,8 @@ var v atomic.Value
 v.Store(x)
 swapped := v.CompareAndSwap(old, new)  //cas原子比较,当old值与store的值一致时才会更新
 
+## sync/pool
+
+存储临时的对象，随时会被人为或者GC回收掉
+
 ## [metrics](https://zhuanlan.zhihu.com/p/390439038)
