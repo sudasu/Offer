@@ -69,3 +69,5 @@ SIGINT       ctrl+c/2    Term    程序终止(interrupt)信号终止进程，可
 SIGQUIT      ctrl+\/3    Term    SIGQUIT退出时会产生core文件, 在这个意义上类似于一个程序错误信号
 SIGHUP              1    Term    用户终端连接结束时发出，可以被忽略，如wget在用户退出登陆后也能继续执行。与终端脱离关系的
                                  守护进程，这个信号用鱼通知它重新读取配置文件
+
+EOF          ctrl+c EOF  Term    (发送特殊符号EOF,通常会结束该进程，如mysql客户端连接)[https://www.cnblogs.com/jiangzhaowei/p/8971265.html]

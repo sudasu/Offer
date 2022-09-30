@@ -1,23 +1,5 @@
 # [mysql](https://dev.mysql.com/doc/refman/5.7/en/innodb-deadlocks-handling.html)
 
-## 基础
-
-mysql的模式匹配:`like`语句支持%以匹配一个或多个,`_`匹配一个，也可以通过`regexp`来使用正则表达式。为使得`regexp`区分大小写可以使用`binary`转化成二进制字符串，如`regexp binary '^b'`。(^:以...开头，$:以...结尾,.:任意一个字符,{n}:前一个规则重复5次。)  
-mysqld\_safe:在UNIX上启动mysqld服务器的推荐方法，mysqld\_safe通过读取options file的[mysqld\_safe]或[safe\_mysqld]部分启动了些安全功能，例如发生错误时重启服务器，将错误信息记录到错误日志。
-
-取消查询:需要先输入相应的结束符，再输入\c。
-
-## 数据类型
-
-### 日期时间
-
-```
-  ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  dt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
- ```
-
- 上述两类数据类型可以在update时自动更新相应值，CURRENT_TIMESTAMP具有同意词(NOW(),LOCALTIME,LOCALTIME())。
-
 ## [mysql数据目录](https://dev.mysql.com/doc/refman/5.7/en/data-directory.html)
 
 ### [系统数据库](https://dev.mysql.com/doc/refman/5.7/en/system-schema.html)
