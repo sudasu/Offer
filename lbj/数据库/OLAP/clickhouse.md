@@ -18,18 +18,21 @@ GRANT ALL ON *.* TO admin WITH GRANT OPTION
 
 ## [备份](https://aop.pub/artical/database/clickhouse/backup-recovery/)
 
-## 规模较小时
+### 规模较小时
 
-```
+```shell
 //使用dump的方式进行备份
 clickhouse-client -d database --query="SELECT * FROM [db.]tablename format CSV" > export_tablename.csv
+
 //进行插入工作
-cat export_tablename.csv | clickhouse-client --query="INSERT INTO [db.]tablename FORMAT CSV";
+cat export_tablename.csv | clickhouse-client --query="INSERT INTO [db.]tablename FORMAT CSV"; //半角逗号（’,’）分割符
+
+clickhouse-client --query "INSERT INTO tutorial.hits_v1 FORMAT TSV" --max_insert_block_size=100000 < hits_v1.tsv //制表符（tab,’t’）
 ```
 
 ## 特点
 
-适用场景：宽表查询，且每列点数据较小入数字和短字符串(URL这种，60字节左右)。每个查询只有一个大表，除了它外，其他都很小。
+适用场景：宽表查询，且每列点数据较小入数字和短字符串(URL这种，60字节左右)。每个查询只有一个大表，除了它外，其他都很小。主要任务就是使用原始数据在线提供各种数据报告。
 
 优点：
 
@@ -48,6 +51,10 @@ cat export_tablename.csv | clickhouse-client --query="INSERT INTO [db.]tablename
 2. 缺少高频率，低延迟的修改删除已存在数据的能力，仅能用于批量删除或修改数据。
 3. 稀疏索引使得ClickHouse不适合通过其键检索单行的点查询，即应对小批量高并发的场景。
 
+其他：
+
+1. 不支持prepared queries
+
 ## 性能
 
 吞吐量：可以使用每秒处理的行数或每秒处理的字节数来衡量。如果数据放置在page cache中，则一个不复杂查询在单个服务器上能够以2-10GB/s的速度处理，如果是简单查询可以达到30GB/s(未压缩的数据)。如果数据没在page cache中，则速度取决于压缩率，一般磁盘允许400MB/s的速度读取速度。对于分布式处理，处理速度是线性扩展的，受限于聚合或排序的结果不是那么大(这块内容还是不太理解，为什么受限？)。(对于传统数据库的落盘一般是directIO，由自己控制刷盘逻辑防止丢失数据。读的话我感觉应该还是走操作系统那套缓存流程，目前没发现有什么特殊需求。)
@@ -57,6 +64,32 @@ cat export_tablename.csv | clickhouse-client --query="INSERT INTO [db.]tablename
 处理大量短查询的吞吐量：一般情况下ClickHouse可以在单台服务器上每秒处理数百个查询，但这不适合此数据库的业务场景，建议每秒查询次数不超过100。
 
 数据的写入性能：建议每次写入不少于1k行的批量写入或每秒不超过1个写入请求。当使用tab-separated格式写入MergeTree表中时，写入速度大约为50-200MB/s。为了提高写入性能，也可以使用并行insert数据。(写应该是直写)
+
+## 配置
+
+### 查看配置
+
+```sql
+SELECT name, value, changed, description
+FROM system.settings -- 配置的系统表
+WHERE name LIKE '%max_insert_b%'
+FORMAT TSV -- 制表符tab分隔
+
+max_insert_block_size    1048576    0    "The maximum block size for insertion, if we control the creation of blocks for insertion."
+```
+
+## 分区
+
+```sql
+-- 查看分区信息
+SELECT
+    partition,
+    name,
+    active
+FROM system.parts
+WHERE table ='bw_nerve_new'
+-- 201901 是分区名称。1 是数据块的最小编号。3 是数据块的最大编号。1 是块级别（即在由块组成的合并树中，该块在树中的深度）。
+```
 
 ## [相关SQL语法](https://clickhouse.tech/docs/zh/sql-reference/statements/create/)
 
@@ -71,3 +104,5 @@ myisam的所有索引都是稀疏索引，innodb有且只有一个密集索引�
 [clickhosue性能优化](https://huaweicloud.csdn.net/6335739dd3efff3090b57420.html)
 [修改配置强行解决内存爆掉的问题](https://blog.csdn.net/anyitian/article/details/115390396)
 [clickhouse踩坑](https://blog.csdn.net/qq_42016966/article/details/110487663)
+[ck调研](https://xie.infoq.cn/article/9f325fb7ddc5d12362f4c88a8)
+[ck分析研究好文](https://www.cnblogs.com/traditional/p/15218743.html)

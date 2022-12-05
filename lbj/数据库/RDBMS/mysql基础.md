@@ -69,7 +69,18 @@ SELECT * FROM shop WHERE price=@min_price OR price=@max_price;
 1. left/right join以相应边的表为基础进行连接，这样不满足条件的右边表便会以null形式展现出来。
 2. (inner) join mysql会根据相关统计信息和策略选择驱动表，然后再连接保留两边都有的数据
 3. 外连接包括左外，右外和全外连接，全连接mysql不支持，一般使用左外连接和右外连接union取并集获得
+4. 对于几个常见的数据库，像oracle,postgresql它们都是支持hash-join的，mysql并不支持
 
+nested loop join:嵌套循环连接，是比较通用的连接方式，分为内外表，每扫描外表的一行数据都要在内表中查找与之相匹配的行，没有索引的复杂度是O(N*M)，这样的复杂度对于大数据集是非常劣势的，一般来讲会通过索引来提升性能。
+    outer table             --驱动表
+    inner table
+
+sort merge-join:merge join需要首先对两个表按照关联的字段进行排序，分别从两个表中取出一行数据进行匹配，如果合适放入结果集；不匹配将较小的那行丢掉继续匹配另一个表的下一行，依次处理直到将两表的数据取完。merge join的很大一部分开销花在排序上，也是同等条件下差于hash join的一个主要原因。
+
+hash join:hash-join将两表中的小表（称S）作为hash表，然后去扫描另一个表(称M)的每一行数据，用得出来的行数据根据连接条件去映射建立的hash表，hash表是放在内存中的，这样可以很快的得到对应的S表与M表相匹配的行。
+    build table              (inner table) --驱动表
+    probe table             (outer  table)
+    
 ### 事务
 
 ```sql
@@ -116,7 +127,23 @@ database db_name;  -- 创建数据库
 show databases;           -- 显示所有的数据库
 drop database db_name;    -- 删除数据库
 use db_name;              -- 选择数据库
-create table tb_name (字段名 varchar(20), 字段名 char(1));   -- 创建数据表模板,注意使用default时，字符串这边似乎有确定的要求'',必须使用单引号。
+-- 创建数据表模板,注意使用default时，字符串这边似乎有确定的要求'',必须使用单引号。
+create table table_name(
+  属性名  数据类型[约束条件],
+  ……
+  属性名  数据类型
+  [UNIQUE|FULLTEXT|SPATIAL] INDEX|KEY
+  [别名] (属性名1 [(长度)] [ASC|DESC)
+);
+a.  UNIQUE: 可选参数，表示索引为唯一索引。
+b.  FULLTEXT:  可选参数，表示索引为全文索引。
+c.  SPATIAL:  可选参数，表示索引为空间索引。
+d.  INDEX  和 KEY 参数用于指定字段为索引的，用户在选择时，只需要选择其中的一种即可。
+e.  "别名" : 为可选参数，其作用是给创建的索引取新名称。
+d.   属性名1:  指索引对应的字段名称，该字段必须被预先定义。
+f.   长度:  可选参数，其指索引的长度，必须是字符串类型才可以使用。
+g.  ASC/DESC: 可选参数，ASC 表示升序排列，DESC 表示降序排列。
+
 show tables;              -- 显示数据表
 desc tb_name；            -- 显示表结构,等同show columns tb_name;
 show all columns tb_name;         --  显示详细表信息，包含comment等
@@ -160,6 +187,8 @@ mysqld\_safe:在UNIX上启动mysqld服务器的推荐方法，mysqld\_safe通过
 
  上述两类数据类型可以在update时自动更新相应值，CURRENT_TIMESTAMP具有同意词(NOW(),LOCALTIME,LOCALTIME())。
 
- ## [mysql函数](https://www.w3schools.cn/mysql/func_mysql_coalesce.asp)
+## [prepared statements](https://dev.mysql.com/doc/refman/8.0/en/sql-prepared-statements.html)
+
+## [mysql函数](https://www.w3schools.cn/mysql/func_mysql_coalesce.asp)
 
 * COALESCE()函数，返回函数内第一个非空值

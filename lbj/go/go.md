@@ -103,6 +103,7 @@ var c *int64 = (*int64)(unsafe.Pointer(b))
 1. 当值类型作为接收者，person类型和*person类型都实现了该接口。
 2. 当指针类型作为接收者，只有 *person类型实现了该接口
 3. 指针类型接受者，可以改变接受者的值，因为接收者参数是拷贝的副本
+4. [不要用指针去指向interface，因为golang对指针自动解引用的处理会带来陷阱](https://www.cnblogs.com/apocelipes/p/13796041.html)
 
 ## [反射例子](https://cloud.tencent.com/developer/article/1864032)
 
