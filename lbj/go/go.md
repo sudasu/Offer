@@ -524,6 +524,8 @@ func (sl RecordListSortSlice) Swap(i, j int) { sl[i], sl[j] = sl[j], sl[i] }
 
 //使用
 sort.Sort(sort.Reverse(model.RecordListSortSlice(infos)))  //其中reverse返回的是一个呗interface包装的slice，表明需要逆转排序
+sort.Sort(sort.IntSlice(nums))
+sort.Ints(nums)
 ```
 
 ## time
