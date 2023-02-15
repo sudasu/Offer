@@ -1,5 +1,95 @@
 # java
 
+## 集合
+
+### list
+
+#### ArrayList
+
+1. 对于有长度限制的ArrayList,扩容遵循1.5倍扩容的原则即length+length >> 1,而Vector是两倍扩容比较浪费空间。
+2. ArrayList是非线程安全的，Vector是线程安全的但读和写都需要加锁，CopyOnWriteArrayList读写分离、对写加锁是线程安全的。
+
+```java
+
+    // Collections.synchronizedList
+    // 并发限制的重要变量，通过对原List的所有方法synchronized(mutex){}操作，保证并发限制
+    final Object mutex;     // Object on which to synchronize
+
+    // CopyOnWriteArrayList的重要变量，其中采用可重入锁的方式保证写的时候加锁
+    // 加锁后对volatile变量的数组对象进行写，然后替换时触发缓存一致性
+    /** The lock protecting all mutators */
+    final transient ReentrantLock lock = new ReentrantLock();
+
+    /** The array, accessed only via getArray/setArray. */
+    private transient volatile Object[] array;
+
+    public boolean add(E e) {
+        final ReentrantLock lock = this.lock;
+        lock.lock(); //上锁，只允许一个线程进入
+        try {
+            Object[] elements = getArray(); // 获得当前数组对象
+            int len = elements.length;
+            Object[] newElements = Arrays.copyOf(elements, len + 1);//拷贝到一个新的数组中
+            newElements[len] = e;//插入数据元素
+            setArray(newElements);//将新的数组对象设置回去
+            return true;
+        } finally {
+            lock.unlock();//释放锁
+        }
+    }
+```
+#### LinkedList
+
+一般List的使用都是ArrayList,因为除了扩容麻烦一些外，大部分时候数组实现都比链表实现性能高，特别是随机查找方面。链表一般还是用作队列比较多，如ConcurrentLinkedQueue
+
+```java
+// 入队操作
+public boolean offer(E e) {
+    checkNotNull(e);
+    // 入队前，创建一个入队节点
+    final Node<E> newNode = new Node<E>(e);
+
+    for (Node<E> t = tail, p = t;;) {
+        // 创建一个指向tail节点的引用
+        Node<E> q = p.next;
+        if (q == null) {
+            // p is last node
+            if (p.casNext(null, newNode)) {
+                // Successful CAS is the linearization point
+                // for e to become an element of this queue,
+                // and for newNode to become "live".
+                if (p != t) // hop two nodes at a time
+                    casTail(t, newNode);  // Failure is OK.
+                return true;
+            }
+            // Lost CAS race to another thread; re-read next
+        }
+        else if (p == q)
+            // We have fallen off list.  If tail is unchanged, it
+            // will also be off-list, in which case we need to
+            // jump to head, from which all live nodes are always
+            // reachable.  Else the new tail is a better bet.
+            p = (t != (t = tail)) ? t : head;
+        else
+            // Check for tail updates after two hops.
+            p = (p != t && t != (t = tail)) ? t : q;
+    }
+}
+```
+
+### hashmap
+
+## 并发
+
+### synchornized
+
+1. 对象锁：对obj进行synchornized关键字包含，或方法申明时加synchornized关键字
+2. 类锁：对类的静态方法加synchornized关键字，或对obj.class使用关键字包含
+
+特点：1.是可重入锁，但是是非公平的，唤醒阻塞线程是随机的。2.比较重量级，使用操作系统的阻塞实现，会引起系统调用。
+
+obj的wait和notify方法：其中wait方法必须在synchornized代码块中使用，在调用后立即放弃持有对象锁，可通过其他持有对象锁的代码块使用notify方法唤醒。其中注意的是sleep睡眠是抱锁睡眠，不会进入等待队列而是进入阻塞状态。wait方法会立即释放锁中断，进入等待队列。唤醒后仍然需要去争抢获得同步锁才能继续从中断处向下执行。
+
 ## 垃圾回收
 
 ### 标记清除

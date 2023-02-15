@@ -159,15 +159,8 @@ static Stream<T> concat(Stream<? extends T> a,Stream<? extends T> b)            
 
 //流的终结操作包含 max,min,findFirst,findAny,anyMatch,allMatch,noneMatch。其中find相关操作返回是Optional对象，Optional包含了许多判空，及提供默认值等相应处理函数。
 
-
-
 optionV.f().g() => optionV.f().flatMap(T::g);
 
 <U> Optional<U> flatMap<Function<? super T,Optional<U>> mapper>                      //同一个类的某些计算或者函数转换成对Optional的封装，由于f的转换返回Optional类型或者直接就是Optional类型无法链式，所以使用flatMap封装。注意：Function的入参
-
-
-
-
-
 
 ```

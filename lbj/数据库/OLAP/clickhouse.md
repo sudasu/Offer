@@ -99,8 +99,6 @@ WHERE table ='bw_nerve_new'
 稀疏：索引文件只为索引码的某些值建立索引(一对多，因为是按顺序排列的所以可以按区间建立索引)
 myisam的所有索引都是稀疏索引，innodb有且只有一个密集索引，非聚簇索引都是稀疏索引。(<font color="#ff00ff">网上文章不靠谱，还是回去慢慢翻翻高性能mysql第五章吧</font>)
 
-[未处理知识](https://blog.csdn.net/liang_0609/article/details/86707845)
-
 [clickhosue性能优化](https://huaweicloud.csdn.net/6335739dd3efff3090b57420.html)
 [修改配置强行解决内存爆掉的问题](https://blog.csdn.net/anyitian/article/details/115390396)
 [clickhouse踩坑](https://blog.csdn.net/qq_42016966/article/details/110487663)

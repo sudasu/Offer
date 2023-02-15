@@ -121,7 +121,7 @@ columns.txt：列名以及数据类型
 count.txt：记录数据的总行数
 primary.idx：主键索引文件，用于存放稀疏索引的数据。通过查询条件与稀疏索引能够快速的过滤无用的数据，减少需要加载的数据量。
 {column}.bin：列数据的存储文件，以列名+bin为文件名，默认设置采用 lz4 压缩格式。
-{column}.mrk2：列数据的标记信息，记录了数据块在 bin 文件中的偏移量。标记文件首先与列数据的存储文件对齐，记录了某个压缩块在 bin 文件中的相对位置；其次与索引文件对齐，记录了稀疏索引对应数据在列存储文件中的位置。clickhouse 将首先通过索引文件定位到标记信息，再根据标记信息直接从.bin 数据文件中读取数据
+{column}.mrk2：列数据的标记信息，记录了数据块在 bin 文件中的**偏移量**。标记文件首先与列数据的存储文件对齐，通过偏移量记录了某个压缩块在 bin 文件中的相对位置；其次与索引文件对齐，将稀疏索引与数据在列存储文件中的位置对应起来。clickhouse 将首先通过索引文件定位到标记的偏移信息，再根据偏移信息直接从.bin 数据文件中读取数据
 
 ### ReplacingMergeTree
 
@@ -277,3 +277,17 @@ FROM
 join isp_map
 on a.isp = isp_map.isp_id;
 ```
+
+## 删除和修改
+
+1. 直接使用update语句
+2. 先删除数据，再插入最新的数据。
+3. ReplacingMergeTree表引擎+Insert语句
+4. CollapsingMergeTree表引擎+Insert语句
+5. VersionedCollapsingMergeTree表引擎+Insert语句
+
+### mutation
+
+在clickhouse中，对于删除和修改操作均称为mutation。mutation操作是异步的且不支持事务，数据影响范围大每次操作都是对该分区进行重写。
+
+对于update操作不能更新主键列，因为这样会影响整个数据的存储结构。
