@@ -3,9 +3,11 @@
 ## 部署启动
 
 ### clickhouse下载
+
 官网下载[clickhouse](https://clickhouse.com/docs/zh/getting-started/install),其中mac版使用`curl -O 'https://builds.clickhouse.com/master/macos/clickhouse' && chmod a+x ./clickhouse`指令下载可执行文件。
 
 ### 初始启动
+
 该可执行文件通过`./clickhouse server`和`./clickhouse client`来启动。由于这样启动是默认default账户，在使用账户启动时需要下载[server.xml](https://github.com/ClickHouse/ClickHouse/blob/master/programs/server/config.xml)和user.xml。server.xml的必要参数看这个[链接](https://zhuanlan.zhihu.com/p/470885530)
 正常起的clickhouse-server指令:`./clickhouse server --config-file=${filepath}`,clickhouse-client指令:`clickhouse-client -u ${user} --password ${password}`。
 
@@ -97,7 +99,7 @@ WHERE table ='bw_nerve_new'
 
 密集索引：文件中的每个搜索码值都对应一个索引值(一对一)
 稀疏：索引文件只为索引码的某些值建立索引(一对多，因为是按顺序排列的所以可以按区间建立索引)
-myisam的所有索引都是稀疏索引，innodb有且只有一个密集索引，非聚簇索引都是稀疏索引。(<font color="#ff00ff">网上文章不靠谱，还是回去慢慢翻翻高性能mysql第五章吧</font>)
+myisam的所有索引都是稀疏索引，innodb有且只有一个密集索引，非聚簇索引都是稀疏索引。
 
 [clickhosue性能优化](https://huaweicloud.csdn.net/6335739dd3efff3090b57420.html)
 [修改配置强行解决内存爆掉的问题](https://blog.csdn.net/anyitian/article/details/115390396)

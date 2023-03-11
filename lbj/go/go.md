@@ -141,6 +141,34 @@ make函数是new函数的封装，方便使用者
 
 第一种情况只能用在map或者chan的场景，返回长度空间默认为0。第二种情况用于指定数组长度，如上返回长度为2的slice。第三种用法，第二个参数指定切片长度，但第三个参数用来指定预留空间。即提前分配好长度足够的内存空间4，但先只能使用2的空间。
 
+## chan
+
+chan在go中的结构:
+```go
+  // 底层的存储结构时环形链表
+  type hchan struct {
+    qcount   uint           // 当前队列中剩余元素个数
+    dataqsiz uint           // 环形队列长度，即可以存放的元素个数
+    buf      unsafe.Pointer // 环形队列指针
+    elemsize uint16         // 每个元素的大小
+    closed   uint32         // 标识关闭状态
+    elemtype *_type         // 元素类型
+    sendx    uint           // 标识元素写入时存放到队列中的队列下标
+    recvx    uint           // 标识元素从队列的该位置读出的队列下标
+    recvq    waitq          // 阻塞时，等待读消息的goroutine队列，会被写gorutine随机唤醒
+    sendq    waitq          // 阻塞时，等待写消息的goroutine队列，会被读gorutine随机唤醒取走当前数据
+    lock mutex              // 互斥锁,chan不允许并发读写,即还是通过锁来实现阻塞队列
+  }
+
+  // channel range的使用，其中close后会结束循环
+  for e := range chanName {
+        fmt.Printf("Get element from chan: %d\n", e)
+  }
+```
+需要注意的是阻塞唤醒过程，其中写过程不存在写有缓冲有值然后读goroutine阻塞的情况
+1. c <- 1 和 <- c -- 无缓冲会阻塞
+2. 未声明的channel c <- 1 会panic, <- c读会阻塞
+
 ## [测试](https://geektutu.com/post/quick-go-test.html)
 
 ### 单元测试
